@@ -1,0 +1,72 @@
+{
+  "source": {
+    "skillDir": "..",
+    "skillMd": "SKILL.md"
+  },
+  "harnesses": {
+    "opencode": {
+      "status": "native",
+      "userDir": "~/.config/opencode/skills/mineru-parse",
+      "projectDir": ".opencode/skills/mineru-parse",
+      "frontmatter": {
+        "name": "mineru-parse",
+        "description": "使用本地 MinerU 解析文档。当用户输入或附带 PDF、DOCX、PPTX、XLSX、TIFF/TIF 或批量图片（jpg/jpeg/png/bmp/tif/tiff）文件时，默认调用 MinerU 将其解析为 Markdown 再读取；单张 jpg/jpeg/png/bmp 图片直接用 Read 工具读取；其他格式使用默认解析。触发词：mineru、pdf、docx、pptx、xlsx、tiff、解析、parse、parse_docs。"
+      },
+      "notes": "OpenCode 原生 SKILL.md 格式"
+    },
+    "claude": {
+      "status": "native",
+      "userDir": "~/.claude/skills/mineru-parse",
+      "projectDir": ".claude/skills/mineru-parse",
+      "frontmatter": {
+        "name": "mineru-parse",
+        "description": "使用本地 MinerU 解析文档为 Markdown。处理 PDF、DOCX、PPTX、XLSX、TIFF/TIF 及批量图片；单张 jpg/png 图片直接读取。触发词：mineru、pdf、解析、parse、parse_docs。",
+        "allowed-tools": "Bash(*)"
+      },
+      "notes": "Claude Code skills；allowed-tools 可按需收紧"
+    },
+    "cline": {
+      "status": "native",
+      "userDir": "~/.cline/skills/mineru-parse",
+      "projectDir": ".cline/skills/mineru-parse",
+      "frontmatter": {
+        "name": "mineru-parse",
+        "description": "使用本地 MinerU 解析文档为 Markdown。处理 PDF、DOCX、PPTX、XLSX、TIFF/TIF 及批量图片。触发词：mineru、pdf、解析、parse。"
+      },
+      "notes": "name 须与目录同名（kebab-case），description 不超过 1024 字符"
+    },
+    "codex": {
+      "status": "native",
+      "userDir": "~/.codex/skills/mineru-parse",
+      "projectDir": ".codex/skills/mineru-parse",
+      "frontmatter": {
+        "name": "mineru-parse",
+        "description": "使用本地 MinerU 解析文档为 Markdown。处理 PDF、DOCX、PPTX、XLSX、TIFF/TIF 及批量图片。触发词：mineru、pdf、解析、parse。"
+      },
+      "notes": "Codex CLI skills；正文须控制在 8KB 内"
+    },
+    "cherrystudio": {
+      "status": "compatible",
+      "reuse": "claude",
+      "userDir": "~/.claude/skills/mineru-parse",
+      "projectDir": ".claude/skills/mineru-parse",
+      "frontmatter": {},
+      "notes": "Cherry Studio 兼容 .claude/skills/ 格式，复用 claude 配置"
+    },
+    "gemini": {
+      "status": "native",
+      "userDir": "~/.gemini/skills/mineru-parse",
+      "projectDir": ".gemini/skills/mineru-parse",
+      "frontmatter": {},
+      "format": "toml",
+      "notes": "Gemini CLI 使用 TOML 格式 skill；正文用 markdown 占位（当前版本简化）"
+    },
+    "zcode": {
+      "status": "extension-point",
+      "userDir": "~/.zcode/skills/mineru-parse",
+      "projectDir": ".zcode/skills/mineru-parse",
+      "frontmatter": {},
+      "notes": "Zcode 规范待确认；生成占位目录，确认后填写 frontmatter/format 即可"
+    }
+  }
+}
