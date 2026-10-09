@@ -1,0 +1,7 @@
+{
+  "mineruBin": "/home/wsl1/MinerU/mineru.sh",
+  "mineruKitBin": "/home/wsl1/MinerU/mineru-kit.sh",
+  "venvPython": "/home/wsl1/MinerU/.venv/bin/python",
+  "modelsDir": "/home/wsl1/MinerU/models",
+  "mineruHome": "/home/wsl1/MinerU"
+}

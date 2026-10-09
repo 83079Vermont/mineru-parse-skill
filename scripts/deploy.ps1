@@ -33,11 +33,17 @@ function Confirm-Yes([string]$prompt) {
 
 # ---------- MinerU detection ----------
 function Find-MinerU {
+    # MinerU 4.0 exposes two entrypoints: `mineru` (document library) and `mineru-kit` (stateless parse).
+    # Parsing uses mineru-kit, so prefer it when present.
     $candidates = @()
+    if ($env:MINERU_KIT_BAT) { $candidates += $env:MINERU_KIT_BAT }
     if ($env:MINERU_BAT) { $candidates += $env:MINERU_BAT }
+    if (Test-Path 'D:\MinerU\mineru-kit.bat') { $candidates += 'D:\MinerU\mineru-kit.bat' }
     if (Test-Path 'D:\MinerU\mineru.bat') { $candidates += 'D:\MinerU\mineru.bat' }
-    $cmd = Get-Command mineru -ErrorAction SilentlyContinue
+    $cmd = Get-Command mineru-kit -ErrorAction SilentlyContinue
     if ($cmd) { $candidates += $cmd.Source }
+    $cmd2 = Get-Command mineru -ErrorAction SilentlyContinue
+    if ($cmd2) { $candidates += $cmd2.Source }
     foreach ($c in $candidates) {
         if (Test-Path -LiteralPath $c) { return $c }
     }
@@ -50,6 +56,11 @@ function Get-MineruVersion([string]$bat) {
     $exe = Join-Path $dir '.venv\Scripts\mineru.exe'
     if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $dir 'mineru.exe' }
     if (Test-Path -LiteralPath $exe) {
+        try {
+            # 4.0: `mineru version --json` -> {"mineru_version": "4.0.10", ...}
+            $json = (& $exe version --json 2>&1) -join ''
+            if ($json -match '"mineru_version"\s*:\s*"([^"]+)"') { return $Matches[1] }
+        } catch { }
         try {
             $ver = & $exe --version 2>&1
             return ($ver -join ' ').Trim()
@@ -211,13 +222,13 @@ function Invoke-Scan {
         }
     }
     if ($hasNvidiaGpu -and $bestVramGb -ge 6) {
-        Write-Host "  => GPU full install (torch cu124 + hybrid-engine) | disk ~8GB | est. download ~5GB"
+        Write-Host "  => GPU install: mineru[full]==4.0.10 + torch cu126 (Windows: LMDeploy VLM) | disk ~10GB | est. download ~6GB"
     }
     elseif ($hasNvidiaGpu) {
-        Write-Host "  => GPU install (torch cu124) + prefer pipeline backend on 8GB VRAM limit | disk ~8GB"
+        Write-Host "  => GPU install (low VRAM): mineru[torch] + llama.cpp VLM, prefer -Tier basic | disk ~8GB"
     }
     else {
-        Write-Host "  => CPU install (torch CPU + pipeline backend) | disk ~6GB"
+        Write-Host "  => CPU install: mineru[torch] or base, prefer -Tier flash/basic | disk ~6GB"
     }
     if ($pys.Count -eq 0) {
         Write-Warn 'No Python found. Install Python 3.10+ first (winget install Python.Python.3.12 or python.org).'
@@ -288,7 +299,7 @@ function Invoke-Install {
         return 3
     }
 
-    # 2. pip install mineru
+    # 2. pip install mineru 4.0 (full = torch + LMDeploy on Windows GPU; torch-only for CPU)
     Write-Step 'Installing mineru via pip...'
     $pipArgs = @('-m', 'pip', 'install', '--upgrade', 'pip')
     & $venvPy @pipArgs 2>&1 | Out-Host
@@ -296,7 +307,8 @@ function Invoke-Install {
         $useMirror = $false
     } else { $useMirror = $true }
 
-    $installArgs = @('-m', 'pip', 'install', 'mineru')
+    $mineruSpec = if ($Backend -eq 'GPU') { 'mineru[full]==4.0.10' } else { 'mineru[torch]==4.0.10' }
+    $installArgs = @('-m', 'pip', 'install', $mineruSpec)
     if ($useMirror) { $installArgs += @('-i', 'https://mirrors.cloud.tencent.com/pypi/simple') }
     & $venvPy @installArgs 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
@@ -305,24 +317,40 @@ function Invoke-Install {
     }
 
     # 3. torch install
+    # 4.0 note: LMDeploy 0.17 turbomind on Windows links CUDA 12 (cudart64_12/cublas64_12),
+    # and lmdeploy requires torch<=2.12.1 -> use the cu126 build of torch 2.12.1.
+    # download.pytorch.org measured ~0.1 MB/s from China, the SJTU mirror ~15 MB/s.
     Write-Step "Installing torch for backend '$Backend'..."
     if ($Backend -eq 'GPU') {
-        Write-Warn 'GPU torch (cu124) may fail from China via official index (download.pytorch.org blocked).'
-        if (Confirm-Yes 'Try pip cu124 index now? (If it fails, see docs/DEPLOYMENT.md manual steps)') {
-            & $venvPy -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 2>&1 | Out-Host
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warn 'torch cu124 auto-install failed. Follow docs/DEPLOYMENT.md manual install, then rerun this script with -Scan to verify.'
-                return 3
+        $torchVer = '2.12.1'; $tvVer = '0.27.1'; $cu = 'cu126'
+        $mirrors = @(
+            "https://mirror.sjtu.edu.cn/pytorch-wheels/$cu",
+            "https://download.pytorch.org/whl/$cu"
+        )
+        $torchOk = $false
+        foreach ($m in $mirrors) {
+            Write-Host "[deploy] torch $torchVer+$cu <- $m"
+            if ($useMirror) {
+                & $venvPy -m pip install "torch==$torchVer" "torchvision==$tvVer" --index-url $m 2>&1 | Out-Host
+            } else {
+                & $venvPy -m pip install "torch==$torchVer" "torchvision==$tvVer" --index-url $m 2>&1 | Out-Host
             }
-        } else {
-            Write-Warn 'Skipping torch auto-install. Follow docs/DEPLOYMENT.md manual steps, then rerun -Scan.'
+            if ($LASTEXITCODE -eq 0) { $torchOk = $true; break }
+        }
+        if (-not $torchOk) {
+            Write-Warn 'torch CUDA auto-install failed. See docs/DEPLOYMENT.md manual steps, then rerun -Scan.'
             return 3
         }
-    } else {
-        $cpuArgs = @('-m', 'pip', 'install', 'torch', 'torchvision', '--index-url', 'https://download.pytorch.org/whl/cpu')
-        if ($useMirror) {
-            $cpuArgs = @('-m', 'pip', 'install', 'torch', 'torchvision')
+        # turbomind resolves CUDA via CUDA_PATH -> keep the junction to torch\lib
+        $cudaStub = Join-Path $MinerUDir 'cuda_stub'
+        $torchLib = Join-Path $MinerUDir '.venv\Lib\site-packages\torch\lib'
+        if ((Test-Path -LiteralPath $torchLib) -and -not (Test-Path -LiteralPath $cudaStub)) {
+            New-Item -ItemType Junction -Path $cudaStub -Target $torchLib -ErrorAction SilentlyContinue | Out-Null
+            Write-Host "[deploy] created junction $cudaStub -> $torchLib"
         }
+    } else {
+        $cpuArgs = @('-m', 'pip', 'install', 'torch', 'torchvision')
+        if (-not $useMirror) { $cpuArgs += @('--index-url', 'https://download.pytorch.org/whl/cpu') }
         & $venvPy @cpuArgs 2>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) {
             Write-Warn 'torch CPU install failed.'
@@ -330,64 +358,68 @@ function Invoke-Install {
         }
     }
 
-    # 4. onnxruntime-gpu (optional)
+    # 4. onnxruntime-gpu replaces the CPU onnxruntime (4.0 forbids having both installed)
     if ($Backend -eq 'GPU') {
-        if (Confirm-Yes 'Install onnxruntime-gpu (CUDA EP, recommended for pipeline GPU)?') {
+        if (Confirm-Yes 'Install onnxruntime-gpu (CUDA EP for table models, replaces CPU onnxruntime)?') {
+            & $venvPy -m pip uninstall -y onnxruntime 2>&1 | Out-Host
             $ortArgs = @('-m', 'pip', 'install', 'onnxruntime-gpu')
             if ($useMirror) { $ortArgs += @('-i', 'https://mirrors.cloud.tencent.com/pypi/simple') }
             & $venvPy @ortArgs 2>&1 | Out-Host
         }
     }
 
-    # 5. download models
-    Write-Step "Downloading models to $ModelDir via modelscope..."
+    # 5. write config.yaml (4.0 reads $MINERU_HOME/config.yaml; mineru.json is no longer read)
+    Write-Step 'Writing config.yaml...'
     New-Item -ItemType Directory -Path $ModelDir -Force | Out-Null
-    & $venvPy -m mineru.cli.models_download -s modelscope -m all 2>&1 | Out-Host
+    $engine = if ($Backend -eq 'GPU') { 'lmdeploy' } else { 'llama-cpp' }
+    $cfg = @(
+        'model:',
+        '  source: modelscope',
+        "  base_dir: $ModelDir",
+        '  small_backend: torch',
+        '  vlm:',
+        "    engine: $engine"
+    ) -join "`r`n"
+    $cfgPath = Join-Path $MinerUDir 'config.yaml'
+    Set-Content -LiteralPath $cfgPath -Value ($cfg + "`r`n") -Encoding UTF8
+    $env:MINERU_HOME = $MinerUDir
+    $env:MINERU_CONFIG = $cfgPath
+
+    # 6. download + verify models for the standard tier
+    Write-Step "Downloading models to $ModelDir via modelscope..."
+    $kitExe = Join-Path $MinerUDir '.venv\Scripts\mineru-kit.exe'
+    & $kitExe models download --tier standard --source modelscope 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Write-Warn 'Model download failed. Check network, then rerun.'
         return 3
     }
+    & $kitExe models verify --tier standard 2>&1 | Out-Host
 
-    # 6. write mineru.json
-    Write-Step 'Writing mineru.json...'
-    $conf = @{
-        'bucket_info'            = @{ 'bucket-name-1' = @('ak', 'sk', 'endpoint'); 'bucket-name-2' = @('ak', 'sk', 'endpoint') }
-        'latex-delimiter-config' = @{
-            display = @{ left = '$$'; right = '$$' }
-            inline  = @{ left = '$'; right = '$' }
-        }
-        'llm-aided-config'       = @{
-            title_aided = @{
-                api_key        = 'your_api_key'
-                base_url       = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-                model          = 'qwen3.5-plus'
-                enable_thinking = $false
-                enable         = $false
-            }
-        }
-        'models-dir'             = @{ pipeline = $ModelDir; vlm = '' }
-        'model-source'           = 'modelscope'
-        'config_version'         = '1.3.2'
-    } | ConvertTo-Json -Depth 6
-    Set-Content -LiteralPath (Join-Path $MinerUDir 'mineru.json') -Value $conf -Encoding UTF8
-
-    # 7. write mineru.bat
-    Write-Step 'Writing mineru.bat wrapper...'
-    $batContent = @"
-@echo off
-setlocal
-set "MINERU_TOOLS_CONFIG_JSON=$MinerUDir\mineru.json"
-set "MINERU_MODEL_SOURCE=modelscope"
-set "MINERU_DEVICE_MODE=$($(if ($Backend -eq 'GPU') { 'cuda' } else { 'cpu' }))"
-set "CUDA_PATH=$MinerUDir\cuda_stub"
-"$MinerUDir\.venv\Scripts\mineru.exe" %*
-endlocal
-"@
+    # 7. write wrappers: mineru.bat (document library) + mineru-kit.bat (parsing)
+    Write-Step 'Writing mineru.bat / mineru-kit.bat wrappers...'
+    $commonEnv = @(
+        '@echo off',
+        'setlocal',
+        "set `"MINERU_HOME=$MinerUDir`"",
+        "set `"MINERU_CONFIG=$MinerUDir\config.yaml`"",
+        'set "MINERU_MODEL_SOURCE=local"',
+        'set "MINERU_MODEL_SMALL_BACKEND=torch"',
+        "set `"MINERU_MODEL_VLM_ENGINE=$engine`""
+    )
+    if ($Backend -eq 'GPU') { $commonEnv += "set `"CUDA_PATH=$MinerUDir\cuda_stub`"" }
+    $batContent = (($commonEnv + @("`"$MinerUDir\.venv\Scripts\mineru.exe`" %*", 'endlocal')) -join "`r`n") + "`r`n"
     Set-Content -LiteralPath (Join-Path $MinerUDir 'mineru.bat') -Value $batContent -Encoding ASCII
+    $kitContent = (($commonEnv + @("`"$MinerUDir\.venv\Scripts\mineru-kit.exe`" %*", 'endlocal')) -join "`r`n") + "`r`n"
+    Set-Content -LiteralPath (Join-Path $MinerUDir 'mineru-kit.bat') -Value $kitContent -Encoding ASCII
 
     # 8. write mineru.config.json for parse.ps1
     Write-Step 'Writing mineru.config.json for parse.ps1...'
-    $parseConf = @{ mineruBat = (Join-Path $MinerUDir 'mineru.bat'); venvPython = $venvPy } | ConvertTo-Json
+    $parseConf = @{
+        mineruBat    = (Join-Path $MinerUDir 'mineru.bat')
+        mineruKitBat = (Join-Path $MinerUDir 'mineru-kit.bat')
+        venvPython   = $venvPy
+        mineruHome   = $MinerUDir
+    } | ConvertTo-Json
     Set-Content -LiteralPath (Join-Path $here 'mineru.config.json') -Value $parseConf -Encoding UTF8
 
     Write-Host "[deploy][ok] Install complete at $MinerUDir"

@@ -67,6 +67,16 @@
       "projectDir": ".zcode/skills/mineru-parse",
       "frontmatter": {},
       "notes": "Zcode 规范待确认；生成占位目录，确认后填写 frontmatter/format 即可"
+    },
+    "dsh": {
+      "status": "native",
+      "userDir": "~/.dsh/skills/mineru-parse",
+      "projectDir": ".dsh/skills/mineru-parse",
+      "frontmatter": {
+        "name": "mineru-parse",
+        "description": "使用本地 MinerU 解析文档（DSH/Windows 用 parse.ps1，WSL/Linux 用 parse.sh）。当用户输入或附带 PDF、DOCX、PPTX、XLSX、TIFF/TIF 或批量图片（jpg/jpeg/png/bmp/tif/tiff）文件时，默认调用 MinerU 将其解析为 Markdown 再读取；单张 jpg/jpeg/png/bmp 图片直接用 Read 工具读取；其他格式使用 DSH 默认解析。触发词：mineru、pdf、docx、pptx、xlsx、tiff、解析、parse、parse_docs。"
+      },
+      "notes": "DeepSeek Harness 原生 SKILL.md 格式。用户级 <DSH_HOME>/skills（即 ~/.dsh/skills，rank 400），项目级 <projectRoot>/.dsh/skills（rank 100）；目录名须为 kebab-case 且与 frontmatter.name 一致；会话目录中 description 上限 500 字符，超出部分可放到 whenToUse"
     }
   }
 }

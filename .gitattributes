@@ -1,0 +1,9 @@
+# 统一 LF 换行：.sh 若被检出为 CRLF，在 WSL/Linux 会报 bad interpreter
+* text=auto eol=lf
+
+# 二进制资源不做行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.zip binary

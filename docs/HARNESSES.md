@@ -22,13 +22,14 @@
 
 | Harness | 状态 | 用户级目录 | 项目级目录 | 特殊要求 |
 |---|---|---|---|---|
-| OpenCode | native | `~/.config/opencode/skills/mineru-parse` | `.opencode/skills/mineru-parse` | YAML frontmatter（name/description） |
+| OpenCode | native | `~/.config/opencode/skills/mineru-parse` | `.opencode/skills/mineru-parse` | YAML frontmatter（name/description 必填；`license`/`compatibility`/`metadata` 可选，其余字段被忽略）；`name` 须匹配 `^[a-z0-9]+(-[a-z0-9]+)*$` 且与目录同名；description ≤ 1024 字符；文件名必须是大写 `SKILL.md` |
 | Claude Code | native | `~/.claude/skills/mineru-parse` | `.claude/skills/mineru-parse` | 已加 `allowed-tools: Bash(*)`，可按需收紧 |
 | Cline | native | `~/.cline/skills/mineru-parse` | `.cline/skills/mineru-parse` | name 须与目录同名（kebab-case）；description ≤ 1024 字符 |
 | Codex CLI | native | `~/.codex/skills/mineru-parse` | `.codex/skills/mineru-parse` | 正文 ≤ 8KB（生成时自动检查） |
 | Cherry Studio | compatible | 复用 Claude 目录 | 复用 Claude 目录 | 兼容 `.claude/skills/` 格式 |
 | Gemini CLI | native | `~/.gemini/skills/mineru-parse` | `.gemini/skills/mineru-parse` | 原生 TOML 格式（当前简化版） |
 | Zcode | extension-point | `~/.zcode/skills/mineru-parse` | `.zcode/skills/mineru-parse` | 规范待确认，暂生成通用占位 |
+| DeepSeek Harness (DSH) | native | `~/.dsh/skills/mineru-parse` | `.dsh/skills/mineru-parse` | YAML frontmatter（name/description）；目录名须为 kebab-case 且与 name 一致；会话目录中 description ≤ 500 字符，超出部分放 `whenToUse` |
 
 ## 生成逻辑
 
@@ -72,3 +73,5 @@
 - **跨平台 OS**：当前脚本为 Windows / PowerShell。macOS / Linux 的等价 `parse.sh` 可后续以同样扩展点方式加入 registry
 - **SKILL.md 体积**：Codex 有 8KB 上限；若未来正文增长超出，可将详细说明移入 `docs/` 并在正文用相对路径引用（各 harness 均支持）
 - **脚本可移植性**：`parse.ps1` / `deploy.ps1` 通过 `mineru.config.json` 定位 MinerU（`deploy.ps1 -Install` 自动生成），不依赖绝对路径
+- **DSH 根目录优先级**：DSH 按 rank 扫描多个根——`<projectRoot>/.dsh/skills`(100) → `<projectRoot>/.agents/skills`(200) → `Config.customSkillDirs`(300) → `<DSH_HOME>/skills`(400) → `~/.agents/skills`(500)。同名技能取 rank 小者，因此项目级副本会盖过用户级副本
+- **DSH 只扫一层**：只识别 `<root>/<name>/SKILL.md` 与 `<root>/<name>.md`，`**/SKILL.md` 不会被发现；`references/`、`scripts/`、`assets/` 作为资源随技能目录一起复制即可
