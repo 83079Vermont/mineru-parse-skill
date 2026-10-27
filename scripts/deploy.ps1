@@ -57,7 +57,7 @@ function Get-MineruVersion([string]$bat) {
     if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $dir 'mineru.exe' }
     if (Test-Path -LiteralPath $exe) {
         try {
-            # 4.0: `mineru version --json` -> {"mineru_version": "4.0.10", ...}
+            # 4.0: `mineru version --json` -> {"mineru_version": "4.0.12", ...}
             $json = (& $exe version --json 2>&1) -join ''
             if ($json -match '"mineru_version"\s*:\s*"([^"]+)"') { return $Matches[1] }
         } catch { }
@@ -222,7 +222,7 @@ function Invoke-Scan {
         }
     }
     if ($hasNvidiaGpu -and $bestVramGb -ge 6) {
-        Write-Host "  => GPU install: mineru[full]==4.0.10 + torch cu126 (Windows: LMDeploy VLM) | disk ~10GB | est. download ~6GB"
+        Write-Host "  => GPU install: mineru[full]==4.0.12 + torch cu126 (Windows: LMDeploy VLM) | disk ~10GB | est. download ~6GB"
     }
     elseif ($hasNvidiaGpu) {
         Write-Host "  => GPU install (low VRAM): mineru[torch] + llama.cpp VLM, prefer -Tier basic | disk ~8GB"
@@ -307,7 +307,7 @@ function Invoke-Install {
         $useMirror = $false
     } else { $useMirror = $true }
 
-    $mineruSpec = if ($Backend -eq 'GPU') { 'mineru[full]==4.0.10' } else { 'mineru[torch]==4.0.10' }
+    $mineruSpec = if ($Backend -eq 'GPU') { 'mineru[full]==4.0.12' } else { 'mineru[torch]==4.0.12' }
     $installArgs = @('-m', 'pip', 'install', $mineruSpec)
     if ($useMirror) { $installArgs += @('-i', 'https://mirrors.cloud.tencent.com/pypi/simple') }
     & $venvPy @installArgs 2>&1 | Out-Host

@@ -166,7 +166,7 @@ markdown 形态是**单文件自包含**的：图片以 base64 data URI 内联�
 "<本技能目录>/scripts/deploy.sh" --install --yes [--mineru-dir ~/MinerU] [--backend GPU|CPU|auto]
 ```
 
-4.0 安装流程：`uv venv`（Python 3.12）→ `uv pip install "mineru[full]==4.0.10"`
+4.0 安装流程：`uv venv`（Python 3.12）→ `uv pip install "mineru[full]==4.0.12"`
 （Linux 用 `mineru[torch]` + llama.cpp 亦可；Windows 的 `[full]` 走 LMDeploy）→
 GPU torch（Windows 走 cu126，**当前 download.pytorch.org 在国内极慢，用 SJTU 镜像**）→
 `mineru-kit models download --tier standard --source modelscope` →

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # MinerU deployment helper for Linux/WSL: detect / scan hardware / recommend / install
-# Bash port of deploy.ps1 — WSL-native install (uv + mineru[torch]==4.0.10 + CUDA torch + llama.cpp VLM).
+# Bash port of deploy.ps1 — WSL-native install (uv + mineru[torch]==4.0.12 + CUDA torch + llama.cpp VLM).
 #
 # Usage:
 #   Scan only (first-use check):
@@ -151,7 +151,7 @@ invoke_scan() {
 
     echo "--- RECOMMENDATION ---"
     if [[ "$has_gpu" == "1" && "$GPU_VRAM_MB" -ge 6144 ]]; then
-        echo "  => GPU install: mineru[torch]==4.0.10 + CUDA torch (Linux PyPI wheel) + llama.cpp VLM | disk ~10GB"
+        echo "  => GPU install: mineru[torch]==4.0.12 + CUDA torch (Linux PyPI wheel) + llama.cpp VLM | disk ~10GB"
     elif [[ "$has_gpu" == "1" ]]; then
         echo "  => GPU install (low VRAM): mineru[torch], prefer -Tier basic | disk ~8GB"
     else
@@ -217,8 +217,8 @@ invoke_install() {
     fi
 
     # 2. mineru 4.0 (Linux: torch small models; the VLM runs via llama.cpp from the base package)
-    log "Installing mineru[torch]==4.0.10 (this may take several minutes)..."
-    "${uvpip[@]}" 'mineru[torch]==4.0.10' || { warn "mineru install failed. Check network/mirror, then rerun."; return 3; }
+    log "Installing mineru[torch]==4.0.12 (this may take several minutes)..."
+    "${uvpip[@]}" 'mineru[torch]==4.0.12' || { warn "mineru install failed. Check network/mirror, then rerun."; return 3; }
 
     # 3. torch cuda verify
     if [[ "$Backend" == "GPU" ]]; then

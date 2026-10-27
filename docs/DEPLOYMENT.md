@@ -23,13 +23,13 @@
 
 ## 二、当前部署环境
 
-两侧均已从 3.4.5 升级到 **4.0.10**；3.x 环境以改名方式保留，可随时回滚。
+两侧当前均为 **4.0.12**（2026-10-27 由 4.0.10 升级）；3.x 与 4.0.10 环境都以改名方式保留，可随时回滚。
 
 ### Windows
 
 - 安装位置：`D:\MinerU`
 - 虚拟环境：`D:\MinerU\.venv`（Python 3.12.10）
-- MinerU：`4.0.10`（`mineru[full]`），`lmdeploy 0.17.0`，`docvortex 0.5.11`
+- MinerU：`4.0.12`（`mineru[full]`），`lmdeploy 0.17.0`，`docvortex 0.6.5`
 - torch：`2.12.1+cu126`（CUDA 12.6；`lmdeploy` 0.17 要求 `torch<=2.12.1`）
 - 配置：`D:\MinerU\config.yaml`
 - 包装脚本：`mineru.bat`（文档库）、**`mineru-kit.bat`（解析，技能使用）**
@@ -41,31 +41,55 @@
 
 - 安装位置：`/home/wsl1/MinerU`
 - 虚拟环境：`/home/wsl1/MinerU/.venv`（Python 3.12.14，uv 管理）
-- MinerU：`4.0.10`（`mineru[torch]`），`docvortex 0.5.11`，VLM 引擎 **llama.cpp**（`mineru-llama-cpp 0.1.2`）
+- MinerU：`4.0.12`（`mineru[torch]`），`docvortex 0.6.5`，VLM 引擎 **llama.cpp**（`mineru-llama-cpp 0.1.2`）
 - torch：`2.14.1+cu130`（Linux PyPI wheel 自带 CUDA，`torch.cuda.is_available()=True`）
 - 配置：`/home/wsl1/MinerU/config.yaml`
 - 包装脚本：`mineru.sh`（文档库）、**`mineru-kit.sh`（解析）**
 - 模型：`/home/wsl1/MinerU/models`（`MinerU-4_models_torch` + `MinerU2.5-Pro-2605-1.2B-GGUF`，共约 2.0 GB）
 - GPU 直通：`/dev/dxg` + nvidia-smi 可见 RTX 4060
 
-### 3.x 回滚产物
+### 4.0.10 → 4.0.12 升级记录（2026-10-27）
 
-| 平台 | venv 备份 | 配置备份 |
+| 平台 | 升级命令（国内源） | 结果 |
 |---|---|---|
-| Windows | `D:\MinerU\.venv-3.4.5.bak` | `D:\MinerU\_backup-3.4.5\{mineru.json,mineru.bat,pip-freeze-3.4.5.txt,...}` |
-| WSL | `~/MinerU/.venv-3.4.5.bak` | `~/MinerU/_backup-3.4.5/{mineru.json,mineru.sh,pip-freeze-3.4.5.txt,...}` |
+| Windows | `uv pip install "mineru[full]==4.0.12" --index-url https://mirrors.cloud.tencent.com/pypi/simple --extra-index-url https://mirror.sjtu.edu.cn/pytorch-wheels/cu126` | 变更 6 包，7.3 s |
+| WSL | `python -m pip install --upgrade "mineru[torch]==4.0.12" -i https://mirrors.cloud.tencent.com/pypi/simple` | 变更 5 包 |
 
-**回滚步骤（Windows 示例）**：
+- 依赖变化：`docvortex 0.5.11 → 0.6.5`，新增 `fastapi-offline`、`mineru-magika`、
+  `onnxruntime`（CPU 版）与 `onnxruntime-directml`；`torch`（Windows `2.12.1+cu126` / WSL `2.14.1+cu130`）、
+  `lmdeploy 0.17.0`、`transformers 5.19.0` 均未被改动。
+- 模型权重无变更，不需要重新下载。
+- Windows 侧升级前卸载了 `onnxruntime-gpu 1.30.0`（原因见下方「onnxruntime 不能共存」）。
+- 校验：`uv pip check` 165 个包全部兼容；basic 档解析 87 页数学 PDF 的第 5–6 页产出
+  7157 B / 121 行，**Windows 与 WSL 产物字节一致**；standard（VLM）档两侧均正常出产物。
+- 备份：`D:\MinerU\.venv-4.0.10.bak`（5.36 GB）、`~/MinerU/.venv-4.0.10.bak`（6.2 GB），
+  依赖清单 `requirements-4.0.10.lock` / `requirements-4.0.12.lock`。
+
+### 回滚产物与步骤
+
+| 平台 | venv 备份 | 依赖清单 | 配置备份 |
+|---|---|---|---|
+| Windows | `D:\MinerU\.venv-4.0.10.bak`（回 4.0.10）<br>`D:\MinerU\.venv-3.4.5.bak`（回 3.4.5） | `requirements-4.0.10.lock` / `requirements-4.0.12.lock` | `D:\MinerU\_backup-3.4.5\{mineru.json,mineru.bat,pip-freeze-3.4.5.txt,...}` |
+| WSL | `~/MinerU/.venv-4.0.10.bak`<br>`~/MinerU/.venv-3.4.5.bak` | 同上 | `~/MinerU/_backup-3.4.5/{mineru.json,mineru.sh,pip-freeze-3.4.5.txt,...}` |
+
+**回滚到 4.0.10（Windows 示例）**：
 
 ```powershell
-Rename-Item 'D:\MinerU\.venv' 'D:\MinerU\.venv-4.0.10'
+Rename-Item 'D:\MinerU\.venv' 'D:\MinerU\.venv-4.0.12'
+Rename-Item 'D:\MinerU\.venv-4.0.10.bak' '.venv'
+```
+
+**回滚到 3.4.5**：
+
+```powershell
+Rename-Item 'D:\MinerU\.venv' 'D:\MinerU\.venv-4.0.12'
 Rename-Item 'D:\MinerU\.venv-3.4.5.bak' '.venv'
 Copy-Item 'D:\MinerU\_backup-3.4.5\mineru.json' 'D:\MinerU\mineru.json' -Force
 Copy-Item 'D:\MinerU\_backup-3.4.5\mineru.bat'  'D:\MinerU\mineru.bat'  -Force
 # 技能侧配置同步回退到 3.x 版本（mineru.config.json 去掉 mineruKitBat）
 ```
 
-WSL 同理（`mv .venv .venv-4.0.10; mv .venv-3.4.5.bak .venv`，还原 `mineru.json`/`mineru.sh`）。
+WSL 同理（`mv .venv .venv-4.0.12; mv .venv-4.0.10.bak .venv`，还原 `mineru.json`/`mineru.sh`）。
 
 ## 三、3.x → 4.0 配置映射
 
@@ -104,7 +128,7 @@ scripts/deploy.sh --scan            # Linux / WSL
 scripts/deploy.sh --install --yes [--mineru-dir ~/MinerU] [--backend GPU|CPU|auto]
 ```
 
-4.0 流程：`uv venv`（Python 3.12）→ `mineru[full]==4.0.10`（Linux 用 `mineru[torch]`）→
+4.0 流程：`uv venv`（Python 3.12）→ `mineru[full]==4.0.12`（Linux 用 `mineru[torch]`）→
 GPU torch（Windows：cu126，优先 SJTU 镜像）→ 建 `cuda_stub` junction →
 写 `config.yaml` → `mineru-kit models download --tier standard --source modelscope` +
 `models verify` → 写 `mineru.bat`/`mineru-kit.bat`（或 `.sh`）与技能配置。
@@ -157,10 +181,16 @@ DACL 不可访问的目录；不带 `mode` 的 `os.mkdir(path)` 正常。
 （`cudart64_12`、`cublas64_12`），因此 Windows 必须装 **cu126** 版 torch（不是 cu128/cu130），
 且 `CUDA_PATH` 要指向含这些 DLL 的 `torch\lib`（`cuda_stub` junction）。
 
-### onnxruntime 不能共存
+### onnxruntime：CPU / GPU / DirectML 三个发行包不能共存
 
-官方明确禁止同时安装 `onnxruntime` 与 `onnxruntime-gpu`。4.0 基础安装会带入 CPU 版；
-要启用 CUDA EP（表格模型）需先卸载 CPU 版再装 GPU 版。
+`onnxruntime`、`onnxruntime-gpu`、`onnxruntime-directml` 共用同一个 `onnxruntime/` 包目录，
+同时安装会互相覆盖文件（症状：`import onnxruntime` 报 DLL 加载失败，或 CUDA EP 静默消失）。
+
+- MinerU 4.0.12 把 `onnxruntime` 写进了**核心依赖**，基础安装必然带入 CPU 版。
+- 本机 Windows 为 `small_backend: torch` + LMDeploy VLM，ONNX 走 CPU EP 即可；
+  因此升级时先卸载了旧的 `onnxruntime-gpu 1.30.0`，现行环境是 `onnxruntime 1.31.1` + `onnxruntime-directml 1.24.4`。
+- 确需 CUDA / DirectML EP 时，先 `uv pip uninstall onnxruntime onnxruntime-directml` 再装对应发行包，
+  不要在保留 CPU 版的情况下直接叠加。
 
 ### 显存不足（OOM）
 

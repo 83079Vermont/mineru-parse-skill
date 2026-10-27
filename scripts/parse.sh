@@ -2,7 +2,7 @@
 # MinerU parsing wrapper for Linux/WSL/macOS: cache, batch, cleanup, validation
 # Bash port of parse.ps1 (MinerU 4.0) — identical CLI semantics and output markers.
 #
-# MinerU 4.0 CLI (verified against 4.0.10 `mineru-kit parse --help`):
+# MinerU 4.0 CLI (verified against 4.0.12 `mineru-kit parse --help`):
 #   mineru-kit parse <inputs...> -o <path> [--tier flash|basic|standard|advanced]
 #                                  [--pages '1-5,8,r3-r1'|all] [--format markdown|middle_json|zip]
 #                                  [--ocr-mode auto|txt|ocr] [--disable-image-analysis] [-v]
