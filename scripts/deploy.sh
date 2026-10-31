@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # MinerU deployment helper for Linux/WSL: detect / scan hardware / recommend / install
-# Bash port of deploy.ps1 — WSL-native install (uv + mineru[torch]==4.0.12 + CUDA torch + llama.cpp VLM).
+# Bash port of deploy.ps1 — WSL-native install (uv + mineru[torch]==4.1.3 + CUDA torch + llama.cpp VLM).
 #
 # Usage:
 #   Scan only (first-use check):
@@ -72,9 +72,15 @@ find_mineru() {
 }
 
 mineru_version() {
-    local bin="$1"
+    local bin="$1" j v
     [[ -z "$bin" ]] && { echo ""; return; }
-    "$bin" --version 2>&1 | tail -1 || echo ""
+    # 4.x: mineru version --json -> {"mineru_version": "4.1.3", ...}
+    j="$("$bin" version --json 2>/dev/null | tr -d '\n')"
+    v="$(printf '%s' "$j" | sed -n 's/.*"mineru_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    if [[ -n "$v" ]]; then echo "$v"; return; fi
+    # fallback: mineru --version prints "MinerU version: x" then "Python version: y"
+    v="$("$bin" --version 2>&1 | grep -i 'MinerU version' | tail -1 | sed 's/.*: *//')"
+    echo "$v"
 }
 
 venv_python_of() { # derive venv python from mineru bin path
@@ -146,12 +152,12 @@ invoke_scan() {
     local win_models
     win_models="$(ls -d /mnt/*/MinerU/models 2>/dev/null | head -1)"
     [[ -n "$win_models" ]] && echo "  found: $win_models ($(du -sh "$win_models" 2>/dev/null | cut -f1))"
-    echo "  note: MinerU 4.0 uses new bundles (MinerU-4_models_torch/_onnx + a GGUF VLM);"
+    echo "  note: MinerU 4.x uses new bundles (MinerU-4_models_torch/_onnx + a GGUF VLM);"
     echo "        3.x Windows model dirs are NOT reusable -> models download via modelscope."
 
     echo "--- RECOMMENDATION ---"
     if [[ "$has_gpu" == "1" && "$GPU_VRAM_MB" -ge 6144 ]]; then
-        echo "  => GPU install: mineru[torch]==4.0.12 + CUDA torch (Linux PyPI wheel) + llama.cpp VLM | disk ~10GB"
+        echo "  => GPU install: mineru[torch]==4.1.3 + CUDA torch (Linux PyPI wheel) + llama.cpp VLM | disk ~10GB"
     elif [[ "$has_gpu" == "1" ]]; then
         echo "  => GPU install (low VRAM): mineru[torch], prefer -Tier basic | disk ~8GB"
     else
@@ -178,8 +184,8 @@ invoke_install() {
     if command -v uv >/dev/null 2>&1; then
         pyver="3.12"
     else
-        pyver="$(python3 --version 2>/dev/null | grep -oE '3\.(1[0-2])' | head -1)"
-        [[ -z "$pyver" ]] && { warn "Need Python 3.10-3.12 or uv. Aborting."; return 3; }
+        pyver="$(python3 --version 2>/dev/null | grep -oE '3\.1[1-4]' | head -1)"
+        [[ -z "$pyver" ]] && { warn "Need Python 3.11-3.14 (4.1 dropped 3.10) or uv. Aborting."; return 3; }
     fi
 
     if ! confirm "Use install dir '$MinerUDir'?"; then read -r -p "Enter MinerU install directory: " x; [[ -n "$x" ]] && MinerUDir="$x"; ModelDir="$MinerUDir/models"; fi
@@ -216,9 +222,9 @@ invoke_install() {
         [[ -n "$Mirror" && "$Mirror" != "none" ]] && uvpip+=(-i "$Mirror" --trusted-host "$(echo "$Mirror" | sed 's|https\?://\([^/]*\).*|\1|')")
     fi
 
-    # 2. mineru 4.0 (Linux: torch small models; the VLM runs via llama.cpp from the base package)
-    log "Installing mineru[torch]==4.0.12 (this may take several minutes)..."
-    "${uvpip[@]}" 'mineru[torch]==4.0.12' || { warn "mineru install failed. Check network/mirror, then rerun."; return 3; }
+    # 2. mineru 4.1 (Linux: torch small models; the VLM runs via llama.cpp from the base package)
+    log "Installing mineru[torch]==4.1.3 (this may take several minutes)..."
+    "${uvpip[@]}" 'mineru[torch]==4.1.3' || { warn "mineru install failed. Check network/mirror, then rerun."; return 3; }
 
     # 3. torch cuda verify
     if [[ "$Backend" == "GPU" ]]; then
@@ -235,7 +241,7 @@ invoke_install() {
         fi
     fi
 
-    # 4. config.yaml (4.0 reads $MINERU_HOME/config.yaml; the 3.x mineru.json is no longer read)
+    # 4. config.yaml (4.x reads $MINERU_HOME/config.yaml; the 3.x mineru.json is no longer read)
     log "Writing config.yaml..."
     mkdir -p "$ModelDir"
     local engine="llama-cpp"
@@ -251,14 +257,15 @@ EOF
     export MINERU_CONFIG="$MinerUDir/config.yaml"
 
     # 5. models for the standard tier.
-    # NOTE: 4.0 uses new bundles (MinerU-4_models_torch/_onnx + a GGUF VLM), so the 3.x
+    # NOTE: 4.x uses new bundles (MinerU-4_models_torch/_onnx + a GGUF VLM), so the 3.x
     # Windows `models/` (Layout/MFR/OCR/TabCls/TabRec) and `vlm-model/` are NOT reusable;
-    # `--win-models` is accepted but has no effect on 4.0.
+    # `--win-models` is accepted but has no effect on 4.x.
     log "Downloading models for tier standard via modelscope..."
     "$venv/bin/mineru-kit" models download --tier standard --source modelscope \
         || { warn "model download failed. Check network, then rerun."; return 3; }
     "$venv/bin/mineru-kit" models verify --tier standard \
         || warn "model verify reported missing resources (parsing may still work for lower tiers)"
+    "$venv/bin/mineru-kit" hardware detect 2>/dev/null || true
 
     # 6. wrappers: mineru.sh (document library) + mineru-kit.sh (stateless parsing)
     log "Writing mineru.sh / mineru-kit.sh wrappers..."

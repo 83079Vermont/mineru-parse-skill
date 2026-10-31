@@ -1,10 +1,10 @@
 # MinerU Parse Skill / MinerU 文档解析技能
 
-[![MinerU](https://img.shields.io/badge/MinerU-4.0.12-blue)](https://github.com/opendatalab/MinerU)
+[![MinerU](https://img.shields.io/badge/MinerU-4.1.3-blue)](https://github.com/opendatalab/MinerU)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 [![Harnesses](https://img.shields.io/badge/harnesses-8-informational)](harnesses/registry.json)
 
-**是什么**：把 PDF / DOCX / PPTX / XLSX / TIFF / 批量图片在**本机**解析成 Markdown，供 AI 编程 Agent 读入上下文的技能（**MinerU 4.0.12**，8 种 Harness 适配）。
+**是什么**：把 PDF / DOCX / PPTX / XLSX / TIFF / 批量图片在**本机**解析成 Markdown，供 AI 编程 Agent 读入上下文的技能（**MinerU 4.1.3**，8 种 Harness 适配）。
 **解决什么**：Agent 读不了二进制文档，云端解析又要上传文件。这里解析全程本地、文件不出本机，封装脚本负责缓存、批处理与结果校验。
 **最快用上**：`& scripts\parse.ps1 -Paths D:\docs\paper.pdf`（WSL 用 `scripts/parse.sh`），产物路径看输出的 `RESULT` 行。
 
@@ -108,7 +108,7 @@ RESULT	<源文件>	<产物路径>	<字节数>	<行数>
 
 3.x 旧参数仍被接受，打印 `WARN_DEPRECATED` 后自动映射或忽略，不会报错：
 
-| 旧参数 | 4.0 行为 |
+| 旧参数 | 4.x 行为 |
 |---|---|
 | `-Backend pipeline` | → `-Tier basic` |
 | `-Backend hybrid-engine` / `vlm-engine` | → `-Tier standard` |
@@ -116,7 +116,7 @@ RESULT	<源文件>	<产物路径>	<字节数>	<行数>
 | `-Effort high` | → `-Tier advanced` |
 | `-NoFormula` | → `-NoImageAnalysis` |
 | `-KeepImages` | 已无对象：markdown 图片内联，没有 `images/` 目录可留；要图片文件用 `-Format zip` |
-| `-Lang` | 4.0 已移除（OCR 语言自动），忽略 |
+| `-Lang` | 4.x 已移除（OCR 语言自动），忽略 |
 
 ## 输出标记与退出码
 
@@ -155,16 +155,24 @@ RESULT	<源文件>	<产物路径>	<字节数>	<行数>
 
 ## 本机部署现状
 
-作者机器 Windows 与 WSL 两侧均已部署 MinerU **4.0.12**：
+作者机器 Windows 与 WSL 两侧均已部署 MinerU **4.1.3**（2026-10-31 由 4.0.12 升级）：
 
 | 平台 | 安装根 | 解析入口 | 包与 VLM 引擎 | 配置 |
 |---|---|---|---|---|
-| Windows | `D:\MinerU` | `D:\MinerU\mineru-kit.bat` | `mineru[full]==4.0.12` + torch cu126 + LMDeploy | `D:\MinerU\config.yaml` |
-| WSL | `~/MinerU` | `~/MinerU/mineru-kit.sh` | `mineru[torch]==4.0.12` + llama.cpp | `~/MinerU/config.yaml` |
+| Windows | `D:\MinerU` | `D:\MinerU\mineru-kit.bat` | `mineru[full]==4.1.3` + torch 2.12.1+cu126 + LMDeploy 0.18 | `D:\MinerU\config.yaml` |
+| WSL | `~/MinerU` | `~/MinerU/mineru-kit.sh` | `mineru[torch]==4.1.3` + torch 2.15.0+cu132 + llama.cpp | `~/MinerU/config.yaml` |
 
 - 同目录下的 `mineru.bat` / `mineru.sh` 是文档库入口，**解析一律走 `mineru-kit`**。
 - 两侧配置相互独立：Windows 用 `mineru.config.json`，WSL 用 `scripts/mineru.config.linux.json`，可各自部署、互不干扰。WSL 内解析走 WSL 本地 MinerU（GPU 直通），不跨系统调 `D:\MinerU`。
 - 本机已部署时不需要执行部署流程，只有解析报 `MINERU_UNAVAILABLE` 才需要下一节。
+
+**4.0 → 4.1 对本技能的影响（实测）**：`mineru-kit parse --help` 与 4.0.12 逐字一致，解析参数与产物语义都没变，`scripts/parse.*` 无需改动。变化集中在：
+
+- Python 支持 3.11–3.14（3.10 掉出支持）
+- 新增 `mineru-kit hardware detect|info`（硬件自检 + 推荐档位）与 `file-parse-server` 子命令
+- `config.yaml` 新增 `model.onnx_device: auto|cpu|gpu`（`MINERU_MODEL_ONNX_DEVICE`），线程可用 `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`
+- 产物 zip 不再包含 `model_output.json`；模型集合不变（仍是 `MinerU-4_models_torch`/`_onnx`），**无需重新下载模型**
+- HTTP 侧为破坏性变更（`/v1/uploads`、`/v1/parse/jobs` → `/v1/tasks`，恢复目录 `tasks-v4-` → `tasks-v5-`）——本技能只用 CLI，不受影响
 
 ## 首次部署
 
@@ -193,14 +201,14 @@ RESULT	<源文件>	<产物路径>	<字节数>	<行数>
 
 `deploy.ps1` 逐项交互确认；`deploy.sh --yes` 全程非交互，适合 Agent 自动执行。退出码：`0` 完成 · `2` 未部署 · `3` 失败 · `4` 用户中止（`USER_ABORTED`）。
 
-安装流程（4.0.12）：
+安装流程（4.1.3）：
 
 | 步骤 | 内容 |
 |---|---|
-| 1 | 建 venv（Python 3.12；Linux 优先 `uv venv`） |
-| 2 | 安装 `mineru[full]==4.0.12`（WSL 为 `mineru[torch]==4.0.12`） |
-| 3 | GPU torch：Windows 装 `torch==2.12.1` + `torchvision==0.27.1` 的 cu126 轮子；Linux 在 CUDA 不可用时用 `--torch-backend=cu126` 重装 |
-| 4 | Windows GPU 额外建 `cuda_stub` junction → `torch\lib`（LMDeploy turbomind 通过 `CUDA_PATH` 找 CUDA DLL）；GPU 场景可把 CPU 版 `onnxruntime` 换成 `onnxruntime-gpu` —— 注意 4.0.12 起 `onnxruntime` 是**必需依赖**，升级 mineru 后会重新带回 CPU 版，两者共用同一包目录会互相覆盖（详见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)「onnxruntime」一节） |
+| 1 | 建 venv（Python 3.12，4.1 支持 3.11–3.14；Linux 优先 `uv venv`） |
+| 2 | 安装 `mineru[full]==4.1.3`（WSL 为 `mineru[torch]==4.1.3`） |
+| 3 | GPU torch：Windows 装 `torch==2.12.1` + `torchvision==0.27.1` 的 cu126 轮子（LMDeploy 0.18 仍走 CUDA 12）；Linux 在 CUDA 不可用时用 `--torch-backend=cu126` 重装（4.1.3 升级时 uv 把 WSL torch 升到了 2.15.0+cu132，CUDA 正常） |
+| 4 | Windows GPU 额外建 `cuda_stub` junction → `torch\lib`（LMDeploy turbomind 通过 `CUDA_PATH` 找 CUDA DLL）；GPU 场景可把 CPU 版 `onnxruntime` 换成 `onnxruntime-gpu` —— 注意 4.1 起 Windows x64 默认依赖是 `onnxruntime-directml`（Linux 为 `onnxruntime`，x86_64 另有 `onnxruntime-ep-webgpu`），三者共用同一包目录会互相覆盖（详见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)「onnxruntime」一节） |
 | 5 | 写 `config.yaml`（`model.source: modelscope`、`model.base_dir`、`small_backend: torch`、`vlm.engine`） |
 | 6 | `mineru-kit models download --tier standard --source modelscope` → `models verify` |
 | 7 | 写 `mineru.bat` / `mineru-kit.bat`（WSL 为 `.sh`）与技能定位配置 |
@@ -213,7 +221,7 @@ RESULT	<源文件>	<产物路径>	<字节数>	<行数>
 | torch cu126 轮子 | `https://mirror.sjtu.edu.cn/pytorch-wheels/cu126` | `download.pytorch.org` 实测约 0.1 MB/s，SJTU 约 15 MB/s |
 | 模型权重 | `--source modelscope` | HuggingFace 走 Xet 卡住时设 `HF_HUB_DISABLE_XET=1` |
 
-> `deploy.sh --win-models` 仍被接受，但在 4.0 下无效果：4.x 使用新的模型包（`MinerU-4_models_torch`/`_onnx` + GGUF/LMDeploy VLM），3.x 的 Windows 模型目录不能复用。
+> `deploy.sh --win-models` 仍被接受，但在 4.x 下无效果：4.x 使用新的模型包（`MinerU-4_models_torch`/`_onnx` + GGUF/LMDeploy VLM），3.x 的 Windows 模型目录不能复用。
 
 解析脚本如何找到 MinerU：
 
@@ -274,12 +282,12 @@ Windows 下把 `~` 换成 `%USERPROFILE%`。clone 后仍需用 `deploy -Scan` �
 | `PermissionError: [WinError 5]`（`multiprocessing` / `ProcessPoolExecutor`） | DSH Windows 沙箱禁止创建命名管道，PDF 渲染进程池需要它。改 `-Tier flash`（flash 不需要模型进程池），或在沙箱外的普通终端执行 |
 | `<tmp>/mineru-api-client-*/output` 创建失败（Access denied） | 沙箱下 `os.mkdir(path, mode)` 会建出不可访问的目录。`scripts/sandbox/sitecustomize.py` 去掉 `mode` 参数，`parse.ps1` 通过 `PYTHONPATH` 自动注入，无需手工操作 |
 | 显存不足（OOM） | RTX 4060 只有 8 GB：`standard`/`advanced` 需要 VLM，长文档分批解析（减少单次 `-Paths` 数量，或用 `MINERU_PROCESSING_WINDOW_SIZE` 调小处理窗口），必要时降 `-Tier basic` / `flash` |
-| 想降到 CPU | 4.0 没有 `MINERU_DEVICE_MODE`：设 `MINERU_MODEL_SMALL_BACKEND=onnx`、`MINERU_TABLE_DEVICE=cpu` |
+| 想降到 CPU | 4.x 没有 `MINERU_DEVICE_MODE`：设 `MINERU_MODEL_SMALL_BACKEND=onnx`、`MINERU_TABLE_DEVICE=cpu`；4.1 起另有 `model.onnx_device: auto\|cpu\|gpu`（`MINERU_MODEL_ONNX_DEVICE`）与 `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS` |
 | uv 说版本已满足但没换 wheel | PEP 440 下 `torch==2.12.1` 会匹配 `2.12.1+cpu`，加 `--reinstall` 或直接装本地 wheel |
 
-性能实测（WSL，含冷启动）：`flash` 单页文档约 1.7 s，`basic` 单页约 9.7 s，`standard` 单页约 15.5 s（峰值内存约 3.9 GB）。
+性能实测（WSL，含冷启动）：`flash` 单页文档约 1.7 s（4.0.12 实测），`basic` 单页约 14.5 s、`standard` 单页约 27 s（4.1.3 实测）；Windows 侧（RTX 4060，含模型加载）`basic`/`standard` 双页约 33–36 s。Windows + LMDeploy 在 8 GB 卡上 warm-up 可能打印一行非致命的 `[TM][ERROR] Warm-up ... failed with status 6`，不影响出产物。
 
-部署环境、3.x→4.0 配置映射与更多排查见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+部署环境、3.x→4.x 配置映射与更多排查见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 ## 目录结构
 
@@ -296,18 +304,20 @@ mineru-parse/
 │   ├── deploy.sh               # 检测 / 硬件扫描 / uv 安装（Linux/WSL）
 │   ├── generate-harnesses.ps1  # 多 Harness 副本生成器
 │   ├── mineru.config.linux.example.json
+│   ├── lib/
+│   │   └── hardware.ps1        # 硬件探测 helper（deploy.ps1 dot-source）
 │   └── sandbox/
 │       └── sitecustomize.py    # DSH 沙箱临时目录权限修复（parse.ps1 自动注入）
 ├── harnesses/
 │   └── registry.json           # Harness 注册表
 └── docs/
-    ├── DEPLOYMENT.md           # 部署环境、3.x→4.0 映射、故障排查
+    ├── DEPLOYMENT.md           # 部署环境、3.x→4.x 映射、升级与故障排查
     └── HARNESSES.md            # 多 Harness 适配与新增 Harness
 ```
 
 ## English
 
-**Overview** — `mineru-parse` turns local PDF / DOCX / PPTX / XLSX / TIFF and image batches into Markdown so AI coding agents can read them. Parsing is fully local (no upload), wrapped by scripts that add caching, batching and result validation. Requires a local MinerU **4.0.12** install.
+**Overview** — `mineru-parse` turns local PDF / DOCX / PPTX / XLSX / TIFF and image batches into Markdown so AI coding agents can read them. Parsing is fully local (no upload), wrapped by scripts that add caching, batching and result validation. Requires a local MinerU **4.1.3** install.
 
 **Quick start**
 
@@ -321,7 +331,7 @@ mineru-parse/
 "<skill-dir>/scripts/parse.sh" -Paths a.pdf b.docx -Force
 ```
 
-Read the `RESULT` line: `RESULT <source> <artifact> <bytes> <lines>`. Output under 1 KB also prints `WARNING_EMPTY` — fall back to reading the source. Not installed yet? `scripts/deploy.ps1 -Scan` (Windows) or `scripts/deploy.sh --scan` (WSL/Linux) prints a hardware report and either `DONE_MinerU_PRESENT` or `DONE_MinerU_ABSENT` (exit code 2); `-Install` / `--install --yes` installs MinerU 4.0.12.
+Read the `RESULT` line: `RESULT <source> <artifact> <bytes> <lines>`. Output under 1 KB also prints `WARNING_EMPTY` — fall back to reading the source. Not installed yet? `scripts/deploy.ps1 -Scan` (Windows) or `scripts/deploy.sh --scan` (WSL/Linux) prints a hardware report and either `DONE_MinerU_PRESENT` or `DONE_MinerU_ABSENT` (exit code 2); `-Install` / `--install --yes` installs MinerU 4.1.3 (Python 3.11–3.14).
 
 **CLI reference** — `-Paths` (required), `-OutDir`, `-Tier auto|flash|basic|standard|advanced`, `-Pages "1-5,8"`, `-Format markdown|middle_json|zip`, `-OcrMode auto|txt|ocr`, `-NoImageAnalysis`, `-Force`. Names are identical in `.ps1` and `.sh`; separate multiple files with commas (PowerShell) or spaces (bash). `auto` resolves to `flash` for non-PDF input, `basic` for PDFs under 10 pages, otherwise `standard` — never choose `flash` for text PDFs, it inlines whole pages as images and formulas stop being searchable. Markdown output is self-contained (images inlined as base64); use `-Format zip` for image files. Legacy 3.x flags (`-Backend`, `-Method`, `-Effort`, `-NoFormula`, `-Lang`) are still accepted and mapped with a `WARN_DEPRECATED` line. Full parameter table: see the Chinese reference above.
 

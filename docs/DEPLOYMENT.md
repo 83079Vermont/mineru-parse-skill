@@ -1,11 +1,11 @@
 # MinerU 部署环境、迁移与故障排查
 
-本技能面向 **MinerU 4.0**（`mineru-kit` CLI）。日常解析只需调用 `scripts/parse.ps1`（Windows）或
+本技能面向 **MinerU 4.1**（`mineru-kit` CLI）。日常解析只需调用 `scripts/parse.ps1`（Windows）或
 `scripts/parse.sh`（Linux/WSL）；对应的 `deploy` 脚本负责首次检测与半自动部署。
 
-## 一、4.0 与 3.x 的关键差异
+## 一、4.x 与 3.x 的关键差异
 
-| 维度 | 3.x | 4.0 |
+| 维度 | 3.x | 4.x |
 |---|---|---|
 | 解析入口 | `mineru -p <in> -o <out> -b <backend>` | `mineru-kit parse <in> -o <out> --tier <tier>` |
 | 文档库入口 | —— | `mineru`（`parse`/`read`/`find`/`search`/`server` 等命令族） |
@@ -16,21 +16,35 @@
 | 配置文件 | `mineru.json`（`MINERU_TOOLS_CONFIG_JSON`） | `$MINERU_HOME/config.yaml`（`MINERU_CONFIG`） |
 | 设备选择 | `MINERU_DEVICE_MODE=cuda/cpu` | 已移除；由 `model.small_backend` + `model.vlm.engine` 决定 |
 | 依赖分组 | `mineru[core]` / `mineru[pipeline]` / `mineru[vlm]` | 基础包 / `mineru[torch]` / `mineru[full]` |
+| Python 版本 | 3.10+ | **3.11–3.14**（4.1 起 3.10 掉出支持） |
 | 模型 | pipeline 小模型目录 + MinerU2.5-Pro safetensors | `MinerU-4_models_torch`/`_onnx` 包 + GGUF/LMDeploy VLM |
 | 模型下载 | `python -m mineru.cli.models_download -s modelscope -m all` | `mineru-kit models download --tier standard --source modelscope` |
 | markdown 产物 | `<out>/<stem>/<method>/<stem>.md` + `images/` | 单个自包含 `.md`（图片内联 base64）；`--format zip` 才有 `images/` |
-| HTTP API | `/file_parse`、`/tasks` | V1：`/v1/uploads`、`/v1/parse/jobs`、`/v1/files` |
+| HTTP API | `/file_parse`、`/tasks` | V1：`/v1/tasks`（4.1）；4.0 为 `/v1/uploads` + `/v1/parse/jobs` |
+
+### 4.0 → 4.1 的关键变化（4.1.3 实测）
+
+| 维度 | 4.0.12 | 4.1.3 |
+|---|---|---|
+| `mineru-kit parse` | — | **完全不变**（`parse --help` 与 4.0.12 逐字一致，产物语义也一致） |
+| 新增子命令 | — | `hardware detect` / `hardware info`（硬件自检 + 推荐档位）、`file-parse-server`（同步单文件服务，默认 8003） |
+| `api-server` / `webui` | `--tier` 可空、`--no-flash` / `--no-advanced` / `--allow-local-source` / `--max-inline-bytes`；webui `--api-server-tier` | `--tier` 默认 `auto`（含自身即上限），上述 4 个选项与 `--api-server-tier` **移除** |
+| config.yaml | 无 ONNX 设备键 | 新增 `model.onnx_device: auto\|cpu\|gpu`；配套 `MINERU_MODEL_ONNX_DEVICE`、`MINERU_INTRA_OP_NUM_THREADS`、`MINERU_INTER_OP_NUM_THREADS` |
+| 依赖 | `onnxruntime` 必需 | `onnx` 进基础依赖；Windows x64 为 `onnxruntime-directml`，Linux x86_64 另加 `onnxruntime-ep-webgpu`；`docvortex 0.6.9`、`lmdeploy 0.18`、`mineru-vl-utils 2.0.8`、`mineru-llama-cpp 0.2.0` |
+| 产物 | zip 内含 `model_output.json` | `model_output.json` **不再写入产物**（ModelJson 仅内部使用） |
+| HTTP | `/v1/uploads` + `/v1/parse/jobs` | `/v1/tasks`；错误体 `code/message`；恢复目录 `tasks-v4-` → `tasks-v5-`（旧目录不加载、不迁移） |
+| 模型集合 | `MinerU-4_models_torch` / `_onnx` | 不变，**升级不需要重新下载模型** |
 
 ## 二、当前部署环境
 
-两侧当前均为 **4.0.12**（2026-10-27 由 4.0.10 升级）；3.x 与 4.0.10 环境都以改名方式保留，可随时回滚。
+两侧当前均为 **4.1.3**（2026-10-31 由 4.0.12 升级）；3.x 与 4.0.10 环境都以改名方式保留，可随时回滚。
 
 ### Windows
 
 - 安装位置：`D:\MinerU`
 - 虚拟环境：`D:\MinerU\.venv`（Python 3.12.10）
-- MinerU：`4.0.12`（`mineru[full]`），`lmdeploy 0.17.0`，`docvortex 0.6.5`
-- torch：`2.12.1+cu126`（CUDA 12.6；`lmdeploy` 0.17 要求 `torch<=2.12.1`）
+- MinerU：`4.1.3`（`mineru[full]`），`lmdeploy 0.18.0`，`docvortex 0.6.9`
+- torch：`2.12.1+cu126`（CUDA 12.6；Windows VLM 仍走 LMDeploy 0.18 + CUDA 12，升级时 torch 保持不动）
 - 配置：`D:\MinerU\config.yaml`
 - 包装脚本：`mineru.bat`（文档库）、**`mineru-kit.bat`（解析，技能使用）**
 - 模型：`D:\MinerU\models\v4`
@@ -41,12 +55,31 @@
 
 - 安装位置：`/home/wsl1/MinerU`
 - 虚拟环境：`/home/wsl1/MinerU/.venv`（Python 3.12.14，uv 管理）
-- MinerU：`4.0.12`（`mineru[torch]`），`docvortex 0.6.5`，VLM 引擎 **llama.cpp**（`mineru-llama-cpp 0.1.2`）
-- torch：`2.14.1+cu130`（Linux PyPI wheel 自带 CUDA，`torch.cuda.is_available()=True`）
+- MinerU：`4.1.3`（`mineru[torch]`），`docvortex 0.6.9`，VLM 引擎 **llama.cpp**（`mineru-llama-cpp 0.2.0`）
+- torch：`2.15.0+cu132`（4.1.3 升级时 uv 顺带升级，仍满足 `torch<3`；`torch.cuda.is_available()=True`）
 - 配置：`/home/wsl1/MinerU/config.yaml`
 - 包装脚本：`mineru.sh`（文档库）、**`mineru-kit.sh`（解析）**
 - 模型：`/home/wsl1/MinerU/models`（`MinerU-4_models_torch` + `MinerU2.5-Pro-2605-1.2B-GGUF`，共约 2.0 GB）
 - GPU 直通：`/dev/dxg` + nvidia-smi 可见 RTX 4060
+
+### 4.0.12 → 4.1.3 升级记录（2026-10-31）
+
+| 平台 | 升级命令（国内源） | 结果 |
+|---|---|---|
+| Windows | `uv pip install --python D:\MinerU\.venv\Scripts\python.exe --upgrade "mineru[full]==4.1.3" --index-url https://mirrors.cloud.tencent.com/pypi/simple --extra-index-url https://mirror.sjtu.edu.cn/pytorch-wheels/cu126` | 解析 167 包，装 49 / 卸 44，约 50 s |
+| WSL | `uv pip install --python ~/MinerU/.venv/bin/python --upgrade "mineru[torch]==4.1.3" --default-index https://mirrors.cloud.tencent.com/pypi/simple` | 变更包相近，完成后再 `uv pip check` 全绿 |
+
+- 关键依赖变化：`mineru 4.0.12 → 4.1.3`、`docvortex 0.6.5 → 0.6.9`、`lmdeploy 0.17.0 → 0.18.0`（仅 Windows [full]）、
+  `mineru-vl-utils 2.0.5 → 2.0.8`、`mineru-llama-cpp 0.1.2 → 0.2.0`、`transformers 5.19.0 → 5.22.1`、
+  新增 `onnx 1.23.2`、`ml-dtypes`、`truststore`、`httpcore2`/`httpx2`。
+- torch：Windows 保持 `2.12.1+cu126`（LMDeploy 0.18 的 turbomind 仍链 CUDA 12）；
+  WSL 被 uv 顺带升到 `2.15.0+cu132`，`torch.cuda.is_available()=True`。
+- 模型权重无变更：`models verify --tier standard` 两侧全绿，**不需要重新下载**。
+- 校验：`uv pip check` Windows 170 包 / WSL 149 包全部兼容；`mineru-kit parse --help` 与 4.0.12 逐字一致；
+  `basic` 与 `standard`（VLM）两侧均正常出产物；技能 `parse.ps1` 的 markdown / zip 两种格式均通过。
+- 备份：升级前的环境与依赖清单见 `requirements-4.0.12.lock`，升级后为 `requirements-4.1.3.lock`。
+- 已知非致命告警：Windows + LMDeploy 在 8 GB 卡上首次 warm-up 打印
+  `[TM][ERROR] Warm-up for 8320 tokens failed with status 6`，随后照常解析并产出，见下方「LMDeploy warm-up 告警」。
 
 ### 4.0.10 → 4.0.12 升级记录（2026-10-27）
 
@@ -69,8 +102,8 @@
 
 | 平台 | venv 备份 | 依赖清单 | 配置备份 |
 |---|---|---|---|
-| Windows | `D:\MinerU\.venv-4.0.10.bak`（回 4.0.10）<br>`D:\MinerU\.venv-3.4.5.bak`（回 3.4.5） | `requirements-4.0.10.lock` / `requirements-4.0.12.lock` | `D:\MinerU\_backup-3.4.5\{mineru.json,mineru.bat,pip-freeze-3.4.5.txt,...}` |
-| WSL | `~/MinerU/.venv-4.0.10.bak`<br>`~/MinerU/.venv-3.4.5.bak` | 同上 | `~/MinerU/_backup-3.4.5/{mineru.json,mineru.sh,pip-freeze-3.4.5.txt,...}` |
+| Windows | `D:\MinerU\.venv-4.0.10.bak`（回 4.0.10）<br>`D:\MinerU\.venv-3.4.5.bak`（回 3.4.5） | `requirements-4.0.10.lock` / `requirements-4.0.12.lock` / `requirements-4.1.3.lock` | `D:\MinerU\_backup-3.4.5\{mineru.json,mineru.bat,pip-freeze-3.4.5.txt,...}` |
+| WSL | `~/MinerU/.venv-4.0.10.bak`<br>`~/MinerU/.venv-3.4.5.bak` | 同上（`requirements-4.1.3.lock` 含 torch） | `~/MinerU/_backup-3.4.5/{mineru.json,mineru.sh,pip-freeze-3.4.5.txt,...}` |
 
 **回滚到 4.0.10（Windows 示例）**：
 
@@ -91,17 +124,17 @@ Copy-Item 'D:\MinerU\_backup-3.4.5\mineru.bat'  'D:\MinerU\mineru.bat'  -Force
 
 WSL 同理（`mv .venv .venv-4.0.12; mv .venv-4.0.10.bak .venv`，还原 `mineru.json`/`mineru.sh`）。
 
-## 三、3.x → 4.0 配置映射
+## 三、3.x → 4.x 配置映射
 
-| 3.x | 4.0 | 说明 |
+| 3.x | 4.x | 说明 |
 |---|---|---|
-| `models-dir.pipeline` | `model.base_dir` | 指向新的 4.0 模型根 |
-| `models-dir.vlm` | `model.vlm.engine` | 3.x 的 VLM 目录不再使用，改由引擎从 4.0 仓库取权重 |
+| `models-dir.pipeline` | `model.base_dir` | 指向新的 4.x 模型根 |
+| `models-dir.vlm` | `model.vlm.engine` | 3.x 的 VLM 目录不再使用，改由引擎从 4.x 仓库取权重 |
 | `model-source: local` | `model.source: local` | 运行时离线；下载时临时用 `--source modelscope` |
-| `MINERU_TOOLS_CONFIG_JSON` | `MINERU_HOME` + `MINERU_CONFIG` | 4.0 读 config.yaml |
+| `MINERU_TOOLS_CONFIG_JSON` | `MINERU_HOME` + `MINERU_CONFIG` | 4.x 读 config.yaml |
 | `MINERU_DEVICE_MODE=cuda` | —— | 移除；GPU 由 `small_backend: torch` + VLM 引擎体现 |
 | `CUDA_PATH=<cuda_stub>` | 保留（仅 GPU + LMDeploy） | turbomind 通过它找 CUDA DLL |
-| `latex-delimiter-config` | 未迁移 | 4.0 config.yaml 无对应字段；数学定界符由渲染器决定 |
+| `latex-delimiter-config` | 未迁移 | 4.x config.yaml 无对应字段；数学定界符由渲染器决定 |
 | `llm-aided-config` | `llm_aided.*` | 保持 `enable: false`，不复制占位 api_key |
 | `bucket_info` | 丢弃 | S3 占位，未使用 |
 
@@ -128,7 +161,7 @@ scripts/deploy.sh --scan            # Linux / WSL
 scripts/deploy.sh --install --yes [--mineru-dir ~/MinerU] [--backend GPU|CPU|auto]
 ```
 
-4.0 流程：`uv venv`（Python 3.12）→ `mineru[full]==4.0.12`（Linux 用 `mineru[torch]`）→
+4.1 流程：`uv venv`（Python 3.11–3.14，推荐 3.12）→ `mineru[full]==4.1.3`（Linux 用 `mineru[torch]`）→
 GPU torch（Windows：cu126，优先 SJTU 镜像）→ 建 `cuda_stub` junction →
 写 `config.yaml` → `mineru-kit models download --tier standard --source modelscope` +
 `models verify` → 写 `mineru.bat`/`mineru-kit.bat`（或 `.sh`）与技能配置。
@@ -177,18 +210,33 @@ DACL 不可访问的目录；不带 `mode` 的 `os.mkdir(path)` 正常。
 
 ### LMDeploy / CUDA 版本
 
-`lmdeploy 0.17.0` 的 `_turbomind.cp312-win_amd64.pyd` 链接的是 **CUDA 12** DLL
+`lmdeploy 0.18.0`（4.1.3 装的是这个版本）的 `_turbomind.cp312-win_amd64.pyd` 仍然链接 **CUDA 12** DLL
 （`cudart64_12`、`cublas64_12`），因此 Windows 必须装 **cu126** 版 torch（不是 cu128/cu130），
 且 `CUDA_PATH` 要指向含这些 DLL 的 `torch\lib`（`cuda_stub` junction）。
+
+### LMDeploy warm-up 告警（非致命）
+
+现象：
+
+```
+[TM][ERROR][...][turbomind.cc:486] Warm-up for 8320 tokens failed with status 6
+```
+
+原因：8 GB 显存不足以容纳默认的 8320-token warm-up 配置，LMDeploy 放弃该预热档位。
+
+处理：**无需处理**——4.1.3 实测随后仍用 lmdeploy 引擎正常解析并产出（退出码 0）。
+只有真的报 OOM 或 `no_engine` 时才降档到 `-Tier basic`。
 
 ### onnxruntime：CPU / GPU / DirectML 三个发行包不能共存
 
 `onnxruntime`、`onnxruntime-gpu`、`onnxruntime-directml` 共用同一个 `onnxruntime/` 包目录，
 同时安装会互相覆盖文件（症状：`import onnxruntime` 报 DLL 加载失败，或 CUDA EP 静默消失）。
 
-- MinerU 4.0.12 把 `onnxruntime` 写进了**核心依赖**，基础安装必然带入 CPU 版。
+- MinerU 4.1 在 Windows x64 上把 `onnxruntime-directml` 写成默认依赖（Linux x86_64 为 `onnxruntime` + `onnxruntime-ep-webgpu`），
+  并且 `onnx` 也进了基础依赖；4.0.12 当年是把 CPU 版 `onnxruntime` 作为核心依赖带进来的。
 - 本机 Windows 为 `small_backend: torch` + LMDeploy VLM，ONNX 走 CPU EP 即可；
   因此升级时先卸载了旧的 `onnxruntime-gpu 1.30.0`，现行环境是 `onnxruntime 1.31.1` + `onnxruntime-directml 1.24.4`。
+- 4.1 新增 `model.onnx_device: auto|cpu|gpu`，需要指定 ONNX 设备时优先用它，而不是换发行包。
 - 确需 CUDA / DirectML EP 时，先 `uv pip uninstall onnxruntime onnxruntime-directml` 再装对应发行包，
   不要在保留 CPU 版的情况下直接叠加。
 
@@ -201,10 +249,12 @@ RTX 4060 仅 8GB：
 
 ### 降级 CPU 模式
 
-4.0 没有 `MINERU_DEVICE_MODE`。改为在配置或环境变量里指定后端：
+4.x 没有 `MINERU_DEVICE_MODE`。改为在配置或环境变量里指定后端：
 
 ```powershell
 $env:MINERU_MODEL_SMALL_BACKEND = 'onnx'   # CPU 小模型
+$env:MINERU_MODEL_ONNX_DEVICE = 'cpu'      # 4.1 新增：ONNX 设备 auto|cpu|gpu
+$env:MINERU_INTRA_OP_NUM_THREADS = '8'     # 4.1 新增：限制 ONNX 线程
 $env:MINERU_TABLE_DEVICE = 'cpu'           # 表格模型强制 CPU
 & "D:\MinerU\mineru-kit.bat" parse <文件> -o <输出.md> --tier basic
 ```
@@ -213,17 +263,25 @@ $env:MINERU_TABLE_DEVICE = 'cpu'           # 表格模型强制 CPU
 
 | 平台 | 档位 | 用例 | 耗时 |
 |---|---|---|---|
-| WSL | flash | `sample.docx`（1 页） | 1.7 s |
-| WSL | basic | `test.pdf`（1 页，含冷启动） | 9.7 s |
-| WSL | standard | `test.pdf`（1 页，VLM，峰值内存约 3.9 GB） | 15.5 s |
-| WSL | basic | `Homework9.pdf`（3 页数学） | 产出 3.6 KB / 186 行可读 LaTeX |
-| WSL | flash | `Homework9.pdf`（3 页数学） | 产出 573 KB（整页图片 base64，公式不可检索） |
+| Windows | basic | 2 页讲义 PDF（4.1.3，含模型加载） | 36 s |
+| Windows | standard | 同上（4.1.3，VLM） | 33 s |
+| WSL | basic | `test.pdf`（1 页，4.1.3，含冷启动） | 14.5 s |
+| WSL | standard | `test.pdf`（1 页，4.1.3，VLM/llama.cpp） | 27.3 s |
+| WSL | flash | `sample.docx`（1 页，4.0.12） | 1.7 s |
+| WSL | basic | `test.pdf`（1 页，4.0.12，含冷启动） | 9.7 s |
+| WSL | standard | `test.pdf`（1 页，4.0.12，VLM，峰值内存约 3.9 GB） | 15.5 s |
+| WSL | basic | `Homework9.pdf`（3 页数学，4.0.12） | 产出 3.6 KB / 186 行可读 LaTeX |
+| WSL | flash | `Homework9.pdf`（3 页数学，4.0.12） | 产出 573 KB（整页图片 base64，公式不可检索） |
 
 > 结论：**文本型 PDF 用 `basic`，不要用 `flash`**。`flash` 对公式页面会退化成整页图片内联。
 
 ## 七、常用命令速查
 
 ```bash
+# 硬件自检（4.1 新增）：推荐档位上限 / 系统与运行时详情
+mineru-kit hardware detect
+mineru-kit hardware info
+
 # 单文件转 markdown
 mineru-kit parse doc.pdf -o doc.md --tier basic
 

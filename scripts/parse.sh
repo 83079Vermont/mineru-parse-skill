@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # MinerU parsing wrapper for Linux/WSL/macOS: cache, batch, cleanup, validation
-# Bash port of parse.ps1 (MinerU 4.0) — identical CLI semantics and output markers.
+# Bash port of parse.ps1 (MinerU 4.1) — identical CLI semantics and output markers.
 #
-# MinerU 4.0 CLI (verified against 4.0.12 `mineru-kit parse --help`):
+# MinerU 4.1 CLI (verified against 4.1.3 `mineru-kit parse --help`; identical to 4.0.12):
 #   mineru-kit parse <inputs...> -o <path> [--tier flash|basic|standard|advanced]
 #                                  [--pages '1-5,8,r3-r1'|all] [--format markdown|middle_json|zip]
 #                                  [--ocr-mode auto|txt|ocr] [--disable-image-analysis] [-v]
@@ -71,15 +71,15 @@ if [[ -n "$Backend" ]]; then
         pipeline)      Tier="basic" ;;
         hybrid-engine|vlm-engine) Tier="standard" ;;
         auto)          : ;;
-        *) echo "WARN_DEPRECATED	-Backend $Backend is a 3.x backend; 4.0 uses --tier" >&2 ;;
+        *) echo "WARN_DEPRECATED	-Backend $Backend is a 3.x backend; 4.x uses --tier" >&2 ;;
     esac
     echo "WARN_DEPRECATED	-Backend mapped to -Tier $Tier" >&2
 fi
 [[ -n "$Method" ]] && { OcrMode="$Method"; echo "WARN_DEPRECATED	-Method mapped to -OcrMode $OcrMode" >&2; }
-[[ -n "$ocrLang" ]] && echo "WARN_DEPRECATED	-Lang has no 4.0 equivalent (OCR language is automatic); ignored" >&2
+[[ -n "$ocrLang" ]] && echo "WARN_DEPRECATED	-Lang has no 4.x equivalent (OCR language is automatic); ignored" >&2
 if [[ -n "$Effort" ]]; then
     [[ "${Effort,,}" == "high" && ( "$Tier" == "basic" || "$Tier" == "auto" ) ]] && Tier="advanced"
-    echo "WARN_DEPRECATED	-Effort is gone in 4.0; use -Tier advanced (now: $Tier)" >&2
+    echo "WARN_DEPRECATED	-Effort is gone in 4.x; use -Tier advanced (now: $Tier)" >&2
 fi
 [[ "$NoFormula" == "1" ]] && { NoImageAnalysis=1; echo "WARN_DEPRECATED	-NoFormula mapped to --disable-image-analysis" >&2; }
 [[ "$KeepImages" == "1" ]] && echo "WARN_DEPRECATED	-KeepImages: markdown output inlines images as base64; use -Format zip for image files" >&2

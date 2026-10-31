@@ -1,6 +1,6 @@
 # MinerU parsing wrapper (Windows): cache, batch, cleanup, validation
 #
-# MinerU 4.0 CLI (verified against 4.0.12 `mineru-kit parse --help`):
+# MinerU 4.1 CLI (verified against 4.1.3 `mineru-kit parse --help`; identical to 4.0.12):
 #   mineru-kit parse <inputs...> -o <path> [--tier flash|basic|standard|advanced]
 #                                  [--pages '1-5,8,r3-r1'|all] [--format markdown|middle_json|zip]
 #                                  [--ocr-mode auto|txt|ocr] [--disable-image-analysis] [-v]
@@ -17,7 +17,7 @@ param(
 
     [string]$OutDir,
 
-    # 4.0 quality tier. auto: Office/image -> flash; PDF <10 pages -> basic; else standard.
+    # 4.x quality tier. auto: Office/image -> flash; PDF <10 pages -> basic; else standard.
     [ValidateSet('auto', 'flash', 'basic', 'standard', 'advanced')]
     [string]$Tier = 'auto',
 
@@ -34,7 +34,7 @@ param(
 
     [switch]$Force,
 
-    # Deprecated in 4.0: markdown output inlines images as base64, so there is no images/ dir to keep.
+    # Deprecated in 4.x: markdown output inlines images as base64, so there is no images/ dir to keep.
     [switch]$KeepImages,
 
     # ---- deprecated 3.x parameters (accepted for compatibility; mapped or warned) ----
@@ -85,7 +85,7 @@ function Resolve-MineruPaths {
         if (Test-Path -LiteralPath $cand) { $venvPy = $cand }
     }
 
-    # --- 4.0 kit entrypoint: env -> config -> sibling of mineru.bat -> PATH ---
+    # --- 4.x kit entrypoint: env -> config -> sibling of mineru.bat -> PATH ---
     $kitBat = $null
     if ($env:MINERU_KIT_BAT) {
         $kitBat = $env:MINERU_KIT_BAT
@@ -122,14 +122,14 @@ if (-not $mineru) {
 $mineruKit = $mineru.MineruKit
 $venvPy = $mineru.VenvPy
 
-# ---- deprecated parameter mapping (3.x -> 4.0) ----
+# ---- deprecated parameter mapping (3.x -> 4.x) ----
 if ($Backend) {
     switch ($Backend.ToLower()) {
         'pipeline' { $Tier = 'basic' }
         'hybrid-engine' { $Tier = 'standard' }
         'vlm-engine' { $Tier = 'standard' }
         'auto' { }
-        default { Write-Host ("WARN_DEPRECATED`t-Backend {0} is a 3.x backend; 4.0 uses --tier" -f $Backend) }
+        default { Write-Host ("WARN_DEPRECATED`t-Backend {0} is a 3.x backend; 4.x uses --tier" -f $Backend) }
     }
     Write-Host ("WARN_DEPRECATED`t-Backend mapped to -Tier {0}" -f $Tier)
 }
@@ -137,17 +137,17 @@ if ($Method) {
     $OcrMode = $Method
     Write-Host ("WARN_DEPRECATED`t-Method mapped to -OcrMode {0}" -f $OcrMode)
 }
-if ($Lang) { Write-Host "WARN_DEPRECATED`t-Lang has no 4.0 equivalent (OCR language is automatic); ignored" }
+if ($Lang) { Write-Host "WARN_DEPRECATED`t-Lang has no 4.x equivalent (OCR language is automatic); ignored" }
 if ($Effort) {
     if ($Effort.ToLower() -eq 'high' -and $Tier -in @('basic', 'auto')) { $Tier = 'advanced' }
-    Write-Host ("WARN_DEPRECATED`t-Effort is gone in 4.0; use -Tier advanced (now: {0})" -f $Tier)
+    Write-Host ("WARN_DEPRECATED`t-Effort is gone in 4.x; use -Tier advanced (now: {0})" -f $Tier)
 }
 if ($NoFormula) {
     $NoImageAnalysis = $true
-    Write-Host 'WARN_DEPRECATED\t-NoFormula mapped to --disable-image-analysis'
+    Write-Host "WARN_DEPRECATED`t-NoFormula mapped to --disable-image-analysis"
 }
 if ($KeepImages) {
-    Write-Host 'WARN_DEPRECATED\t-KeepImages: markdown output inlines images as base64; use -Format zip for image files'
+    Write-Host "WARN_DEPRECATED`t-KeepImages: markdown output inlines images as base64; use -Format zip for image files"
 }
 
 # ---- sandbox compatibility (DSH): os.mkdir(path, mode) creates an unreadable dir; patch it ----

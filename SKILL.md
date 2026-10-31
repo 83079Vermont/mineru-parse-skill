@@ -1,12 +1,13 @@
 ---
 name: mineru-parse
-description: 使用本地 MinerU 4.0 解析文档（DSH/Windows 用 parse.ps1，WSL/Linux 用 parse.sh）。当用户输入或附带 PDF、DOCX、PPTX、XLSX、TIFF/TIF 或批量图片（jpg/jpeg/png/bmp/tif/tiff）文件时，默认调用 MinerU 将其解析为 Markdown 再读取；单张 jpg/jpeg/png/bmp 图片直接用 Read 工具读取；其他格式使用 DSH 默认解析。触发词：mineru、pdf、docx、pptx、xlsx、tiff、解析、parse、parse_docs。
+description: 使用本地 MinerU 4.1 解析文档（DSH/Windows 用 parse.ps1，WSL/Linux 用 parse.sh）。当用户输入或附带 PDF、DOCX、PPTX、XLSX、TIFF/TIF 或批量图片（jpg/jpeg/png/bmp/tif/tiff）文件时，默认调用 MinerU 将其解析为 Markdown 再读取；单张 jpg/jpeg/png/bmp 图片直接用 Read 工具读取；其他格式使用 DSH 默认解析。触发词：mineru、pdf、docx、pptx、xlsx、tiff、解析、parse、parse_docs。
 ---
 
 # MinerU 文档解析
 
-> 本技能面向 **MinerU 4.0**（`mineru-kit` CLI）。如果解析报参数错误，先用
-> `mineru-kit parse --help` 核对当前安装的 CLI 契约（4.0 与 3.x 参数完全不同）。
+> 本技能面向 **MinerU 4.1**（`mineru-kit` CLI）。实测 4.1.3 的 `mineru-kit parse --help` 与 4.0.12
+> 逐字一致，解析参数在 4.0 → 4.1 没有变化；如果解析报参数错误，先用 `mineru-kit parse --help`
+> 核对当前安装的 CLI 契约（4.x 与 3.x 参数完全不同）。
 
 当用户向 DSH 输入文件时，按扩展名（不区分大小写）选择解析方式：
 
@@ -44,7 +45,7 @@ wsl.exe -d Ubuntu-26.10 -- bash /mnt/c/Users/wanji/.dsh/skills/mineru-parse/scri
 ```
 
 `<本技能目录>` 指当前 skill 的根目录 `C:\Users\wanji\.dsh\skills\mineru-parse`（内含 `SKILL.md`、
-`scripts/`、`docs/`）。**本机两侧均已部署 MinerU 4.0**：
+`scripts/`、`docs/`）。**本机两侧均已部署 MinerU 4.1**：
 
 | 平台 | 安装根 | 解析入口 | 配置 |
 |---|---|---|---|
@@ -61,12 +62,12 @@ wsl.exe -d Ubuntu-26.10 -- bash /mnt/c/Users/wanji/.dsh/skills/mineru-parse/scri
 | `-OutDir` | 输出根目录。缺省时：单文件输出到源文件所在目录；多文件输出到临时目录并把产物复制回各自源目录 |
 | `-Tier` | `auto`（默认）/ `flash` / `basic` / `standard` / `advanced`，取代 3.x 的 `-Backend` |
 | `-Pages` | PDF 页范围，如 `1-5,8` / `r3-r1`（`r1` 为末页）/ `all`；缺省为 MinerU 默认（全部页） |
-| `-Format` | `markdown`（默认）/ `middle_json` / `zip`；`zip` 会落盘 `markdown.md` + `images/` + `middle_json.json` |
+| `-Format` | `markdown`（默认）/ `middle_json` / `zip`；`zip` 会落盘 `markdown.md` + `images/` + `middle_json.json`（4.1 起不再产出 `model_output.json`） |
 | `-OcrMode` | `auto`（默认）/ `txt` / `ocr`，取代 3.x 的 `-Method` |
 | `-NoImageAnalysis` | 关闭图像分析（近似取代 3.x 的 `-NoFormula`） |
 | `-Force` | 忽略缓存，强制重新解析 |
 
-**档位语义（4.0）**
+**档位语义（4.1）**
 
 | 档位 | 用途 | 依赖 |
 |---|---|---|
@@ -83,16 +84,16 @@ wsl.exe -d Ubuntu-26.10 -- bash /mnt/c/Users/wanji/.dsh/skills/mineru-parse/scri
 
 **已废弃的 3.x 参数**（仍被接受，会打印 `WARN_DEPRECATED` 并自动映射，不会报错）：
 `-Backend`（pipeline→basic、hybrid-engine/vlm-engine→standard）、`-Method`（→`-OcrMode`）、
-`-Effort high`（→`advanced`）、`-NoFormula`（→`-NoImageAnalysis`）、`-KeepImages`（4.0 markdown
-会把图片内联为 base64，已无 `images/` 目录可留；要图片文件请用 `-Format zip`）、`-Lang`（4.0 已移除，
+`-Effort high`（→`advanced`）、`-NoFormula`（→`-NoImageAnalysis`）、`-KeepImages`（4.x markdown
+会把图片内联为 base64，已无 `images/` 目录可留；要图片文件请用 `-Format zip`）、`-Lang`（4.x 已移除，
 OCR 语言自动，忽略）。
 
 ### 超时设置
 
 脚本会输出 `RECOMMENDED_TIMEOUT_SECONDS=NNN`（flash 约 30+3×页数、basic 30+8×页数、
 standard/advanced 30+15×页数）。执行时命令超时应设为该值以上（`pwsh` 工具用 `timeoutMs`），
-避免默认 120s 截断。实测（WSL，含冷启动）：flash 单文件约 1.7s、basic 单页约 9.7s、
-standard 单页约 15.5s。
+避免默认 120s 截断。实测 4.1.3（WSL，含冷启动）：flash 单文件约 1.7s、basic 单页约 14.5s、
+standard 单页约 27s；Windows basic 双页约 36s（含模型加载）。
 
 ### 缓存
 
@@ -112,7 +113,7 @@ MinerU。需重新解析时用 `-Force`。
 
 脚本输出每行 `RESULT\t<源文件>\t<产物路径>\t<字节>\t<行数>`。
 
-MinerU 4.0 的产物规则（已实测）：
+MinerU 4.1 的产物规则（已实测）：
 
 | 场景 | `-o` 语义 | 结果 |
 |---|---|---|
@@ -122,6 +123,8 @@ MinerU 4.0 的产物规则（已实测）：
 
 markdown 形态是**单文件自包含**的：图片以 base64 data URI 内联，不产生 `images/` 等辅助文件
 （因此 3.x 时代「删除中间产物」的清理逻辑已无对象）。需要把图片单独落盘时用 `-Format zip`。
+4.1 的 zip 内为 `markdown.md`、`middle_json.json`、`structured_content.json`、`images/` 等，
+原始模型输出 `model_output.json` 已不再写入产物。
 
 ## 结果校验与上下文管理
 
@@ -137,11 +140,15 @@ markdown 形态是**单文件自包含**的：图片以 base64 data URI 内联�
   `parse.ps1` 会自动通过 `PYTHONPATH` 注入。若某个档位仍在沙箱内因管道失败，改用 `-Tier flash`
   （无需模型进程池），或在工作区外的普通终端里运行。
 - **显存**：RTX 4060 只有 8GB。`standard`/`advanced` 需要 VLM，长文档请分批解析；显存不足时降级
-  `-Tier basic`。
+  `-Tier basic`。Windows + LMDeploy 在 8GB 卡上首次 warm-up 可能打印一行
+  `[TM][ERROR] Warm-up for 8320 tokens failed`，属非致命告警，解析仍会继续并正常出产物。
+- **ONNX 设备（4.1 新增）**：`model.onnx_device: auto|cpu|gpu`（或环境变量 `MINERU_MODEL_ONNX_DEVICE`）
+  控制 ONNX 小模型走哪个设备；线程可用 `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS` 限制。
+  本机两侧都是 `small_backend: torch`，无需设置。
 
 ## 首次使用与部署
 
-**本机 Windows 与 WSL 两侧均已部署 MinerU 4.0**（`D:\MinerU\mineru-kit.bat`、
+**本机 Windows 与 WSL 两侧均已部署 MinerU 4.1**（`D:\MinerU\mineru-kit.bat`、
 `~/MinerU/mineru-kit.sh` 均存在，技能配置已指向它们），正常情况下不需要执行本节。仅当解析报
 `MINERU_UNAVAILABLE` 时，先按平台运行检测：
 
@@ -166,8 +173,8 @@ markdown 形态是**单文件自包含**的：图片以 base64 data URI 内联�
 "<本技能目录>/scripts/deploy.sh" --install --yes [--mineru-dir ~/MinerU] [--backend GPU|CPU|auto]
 ```
 
-4.0 安装流程：`uv venv`（Python 3.12）→ `uv pip install "mineru[full]==4.0.12"`
-（Linux 用 `mineru[torch]` + llama.cpp 亦可；Windows 的 `[full]` 走 LMDeploy）→
+4.1 安装流程：`uv venv`（Python **3.11–3.14**，推荐 3.12；4.1 已不支持 3.10）→
+`uv pip install "mineru[full]==4.1.3"`（Linux 用 `mineru[torch]` + llama.cpp 亦可；Windows 的 `[full]` 走 LMDeploy）→
 GPU torch（Windows 走 cu126，**当前 download.pytorch.org 在国内极慢，用 SJTU 镜像**）→
 `mineru-kit models download --tier standard --source modelscope` →
 `mineru-kit models verify` → 生成 `config.yaml`、`mineru.bat`/`mineru-kit.bat`（Windows）或
@@ -175,6 +182,19 @@ GPU torch（Windows 走 cu126，**当前 download.pytorch.org 在国内极慢，
 
 安装完成后会生成 `mineru.config.json`（Windows）或 `mineru.config.linux.json`（WSL/Linux），
 供对应 parse 脚本定位。部署细节与故障排查见 `docs/DEPLOYMENT.md`。
+
+### 4.1 自检（可选）
+
+MinerU 4.1 新增 `mineru-kit hardware`，排查「档位不可用 / 装没装好」时直接看它，不必猜：
+
+```powershell
+& "D:\MinerU\mineru-kit.bat" hardware detect   # 本机推荐档位上限
+& "D:\MinerU\mineru-kit.bat" hardware info     # 系统 / GPU / torch / onnxruntime / lmdeploy / llama.cpp 详情
+& "D:\MinerU\mineru-kit.bat" models show        # config.yaml 解析结果与模型仓库就绪状态
+```
+
+`hardware detect` 在 GPU 可用时给出 `flash, basic, standard, advanced` 四档与请求默认档位 `standard`；
+纯 CPU 机器会按逻辑核数给出上限（<4 核仅 flash，4–11 核到 basic，≥12 核到 standard）。
 
 ## 失败回退
 

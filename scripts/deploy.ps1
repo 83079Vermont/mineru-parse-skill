@@ -33,7 +33,7 @@ function Confirm-Yes([string]$prompt) {
 
 # ---------- MinerU detection ----------
 function Find-MinerU {
-    # MinerU 4.0 exposes two entrypoints: `mineru` (document library) and `mineru-kit` (stateless parse).
+    # MinerU 4.x exposes two entrypoints: `mineru` (document library) and `mineru-kit` (stateless parse).
     # Parsing uses mineru-kit, so prefer it when present.
     $candidates = @()
     if ($env:MINERU_KIT_BAT) { $candidates += $env:MINERU_KIT_BAT }
@@ -57,7 +57,7 @@ function Get-MineruVersion([string]$bat) {
     if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $dir 'mineru.exe' }
     if (Test-Path -LiteralPath $exe) {
         try {
-            # 4.0: `mineru version --json` -> {"mineru_version": "4.0.12", ...}
+            # 4.x: `mineru version --json` -> {"mineru_version": "4.1.3", ...}
             $json = (& $exe version --json 2>&1) -join ''
             if ($json -match '"mineru_version"\s*:\s*"([^"]+)"') { return $Matches[1] }
         } catch { }
@@ -69,99 +69,13 @@ function Get-MineruVersion([string]$bat) {
     return ''
 }
 
-# ---------- Hardware scan ----------
-function Get-GpuInfo {
-    $nvsmiLines = @()
-    $nvsmiCmd = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-    if ($nvsmiCmd) {
-        try {
-            $nvsmiLines = @(nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>&1)
-        } catch { }
-    }
-    $gpus = @()
-    try {
-        $vcs = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
-        $nvIndex = 0
-        foreach ($vc in $vcs) {
-            $isNv = ($vc.Name -match 'NVIDIA|GeForce|Quadro|RTX|GTX')
-            $vramMb = 0
-            if ($isNv -and $nvsmiLines.Count -gt $nvIndex) {
-                $parts = ($nvsmiLines[$nvIndex] -split ',')
-                if ($parts.Count -ge 2) {
-                    $mem = $parts[1] -replace '[^\d]', ''
-                    [double]::TryParse($mem, [ref]$vramMb) | Out-Null
-                }
-            }
-            if ($isNv) { $nvIndex++ }
-            if ($vramMb -le 0 -and $vc.AdapterRAM -gt 0) {
-                $vramMb = [math]::Round($vc.AdapterRAM / 1MB, 0)
-            }
-            $gpus += [pscustomobject]@{
-                Name       = $vc.Name
-                VramMb     = [int]$vramMb
-                Driver     = $vc.DriverVersion
-                HasNvidia  = $isNv
-            }
-        }
-    } catch { }
-    return $gpus
+# ---------- Hardware scan helpers (scripts/lib/hardware.ps1) ----------
+$libHardware = Join-Path $here 'lib\hardware.ps1'
+if (-not (Test-Path -LiteralPath $libHardware)) {
+    Write-Warn "missing helper: $libHardware (scan/install cannot probe hardware)"
+    exit 3
 }
-
-function Get-CpuInfo {
-    try {
-        $cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
-        return [pscustomobject]@{ Name = $cpu.Name; Cores = $cpu.NumberOfCores }
-    } catch { return [pscustomobject]@{ Name = 'unknown'; Cores = 0 } }
-}
-
-function Get-RamInfo {
-    try {
-        $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
-        return [pscustomobject]@{ TotalGb = [math]::Round($cs.TotalPhysicalMemory / 1GB, 1) }
-    } catch { return [pscustomobject]@{ TotalGb = 0 } }
-}
-
-function Get-DiskFree([string]$path) {
-    try {
-        $root = [IO.Path]::GetPathRoot($path)
-        $device = $root.TrimEnd('\')
-        $d = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='$device'" -ErrorAction SilentlyContinue
-        if ($d) { return [math]::Round($d.FreeSpace / 1GB, 1) }
-    } catch { }
-    return -1
-}
-
-function Get-PythonInfo {
-    $found = @()
-    $cands = @(
-        @{ Label = 'python'; Cmd = 'python' },
-        @{ Label = 'py launcher'; Cmd = 'py' },
-        @{ Label = 'conda'; Cmd = 'conda' },
-        @{ Label = 'uv'; Cmd = 'uv' }
-    )
-    foreach ($c in $cands) {
-        $cmd = Get-Command $c.Cmd -ErrorAction SilentlyContinue
-        if ($cmd) {
-            try {
-                $ver = & $c.Cmd --version 2>&1
-                $found += [pscustomobject]@{ Tool = $c.Label; Path = $cmd.Source; Version = ($ver -join ' ').Trim() }
-            } catch {
-                $found += [pscustomobject]@{ Tool = $c.Label; Path = $cmd.Source; Version = 'found' }
-            }
-        }
-    }
-    return $found
-}
-
-function Get-NvidiaSmi {
-    $nvsmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
-    if (-not $nvsmi) { return $null }
-    try {
-        $out = & nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader 2>&1
-        if ($out) { return ($out -join ' | ') }
-    } catch { }
-    return $null
-}
+. $libHardware
 
 function Invoke-Scan {
     Write-Step 'Scanning MinerU deployment status...'
@@ -222,16 +136,17 @@ function Invoke-Scan {
         }
     }
     if ($hasNvidiaGpu -and $bestVramGb -ge 6) {
-        Write-Host "  => GPU install: mineru[full]==4.0.12 + torch cu126 (Windows: LMDeploy VLM) | disk ~10GB | est. download ~6GB"
+        Write-Host "  => GPU install: mineru[full]==4.1.3 + torch cu126 (Windows: LMDeploy VLM) | disk ~10GB | est. download ~6GB"
     }
     elseif ($hasNvidiaGpu) {
         Write-Host "  => GPU install (low VRAM): mineru[torch] + llama.cpp VLM, prefer -Tier basic | disk ~8GB"
+        Write-Host '     (run mineru-kit hardware detect after install to confirm the tier ceiling)'
     }
     else {
         Write-Host "  => CPU install: mineru[torch] or base, prefer -Tier flash/basic | disk ~6GB"
     }
     if ($pys.Count -eq 0) {
-        Write-Warn 'No Python found. Install Python 3.10+ first (winget install Python.Python.3.12 or python.org).'
+        Write-Warn 'No Python found. Install Python 3.11+ first (4.1 supports 3.11-3.14; winget install Python.Python.3.12 or python.org).'
     }
     Write-Host 'DONE_MinerU_ABSENT'
     return 2
@@ -299,7 +214,7 @@ function Invoke-Install {
         return 3
     }
 
-    # 2. pip install mineru 4.0 (full = torch + LMDeploy on Windows GPU; torch-only for CPU)
+    # 2. pip install mineru 4.1 (full = torch + LMDeploy on Windows GPU; torch-only for CPU)
     Write-Step 'Installing mineru via pip...'
     $pipArgs = @('-m', 'pip', 'install', '--upgrade', 'pip')
     & $venvPy @pipArgs 2>&1 | Out-Host
@@ -307,7 +222,7 @@ function Invoke-Install {
         $useMirror = $false
     } else { $useMirror = $true }
 
-    $mineruSpec = if ($Backend -eq 'GPU') { 'mineru[full]==4.0.12' } else { 'mineru[torch]==4.0.12' }
+    $mineruSpec = if ($Backend -eq 'GPU') { 'mineru[full]==4.1.3' } else { 'mineru[torch]==4.1.3' }
     $installArgs = @('-m', 'pip', 'install', $mineruSpec)
     if ($useMirror) { $installArgs += @('-i', 'https://mirrors.cloud.tencent.com/pypi/simple') }
     & $venvPy @installArgs 2>&1 | Out-Host
@@ -317,8 +232,8 @@ function Invoke-Install {
     }
 
     # 3. torch install
-    # 4.0 note: LMDeploy 0.17 turbomind on Windows links CUDA 12 (cudart64_12/cublas64_12),
-    # and lmdeploy requires torch<=2.12.1 -> use the cu126 build of torch 2.12.1.
+    # 4.1 note: LMDeploy 0.18 turbomind on Windows still links CUDA 12 (cudart64_12/cublas64_12),
+    # and torch must stay <=2.12.1 -> use the cu126 build of torch 2.12.1.
     # download.pytorch.org measured ~0.1 MB/s from China, the SJTU mirror ~15 MB/s.
     Write-Step "Installing torch for backend '$Backend'..."
     if ($Backend -eq 'GPU') {
@@ -358,7 +273,7 @@ function Invoke-Install {
         }
     }
 
-    # 4. onnxruntime-gpu replaces the CPU onnxruntime (4.0 forbids having both installed)
+    # 4. onnxruntime-gpu replaces the default onnxruntime (Windows x64 defaults to onnxruntime-directml since 4.1)
     if ($Backend -eq 'GPU') {
         if (Confirm-Yes 'Install onnxruntime-gpu (CUDA EP for table models, replaces CPU onnxruntime)?') {
             & $venvPy -m pip uninstall -y onnxruntime 2>&1 | Out-Host
@@ -368,7 +283,7 @@ function Invoke-Install {
         }
     }
 
-    # 5. write config.yaml (4.0 reads $MINERU_HOME/config.yaml; mineru.json is no longer read)
+    # 5. write config.yaml (4.x reads $MINERU_HOME/config.yaml; mineru.json is no longer read)
     Write-Step 'Writing config.yaml...'
     New-Item -ItemType Directory -Path $ModelDir -Force | Out-Null
     $engine = if ($Backend -eq 'GPU') { 'lmdeploy' } else { 'llama-cpp' }
@@ -394,6 +309,7 @@ function Invoke-Install {
         return 3
     }
     & $kitExe models verify --tier standard 2>&1 | Out-Host
+    & $kitExe hardware detect 2>&1 | Out-Host
 
     # 7. write wrappers: mineru.bat (document library) + mineru-kit.bat (parsing)
     Write-Step 'Writing mineru.bat / mineru-kit.bat wrappers...'
